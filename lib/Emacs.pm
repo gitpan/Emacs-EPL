@@ -98,7 +98,7 @@ sub TIEHASH {
 }
 
 sub FETCH	{ return &Emacs::Lisp::getenv ($_[1]); }
-sub STORE	{ &Emacs::Lisp::setenv ($_[1], $_[2]); }
+sub STORE	{ &Emacs::Lisp::setenv ($_[1], $_[2]); return ($_[2]); }
 
 # XXX Need to write tests for these.
 
@@ -150,12 +150,14 @@ sub WRITE {
     my ($stream, $output, $length, $offset) = @_;
     Emacs::Lisp::princ (substr ($output, $offset, $length),
 			Emacs::Lisp::symbol_value ($$stream));
+    return ($length);
 }
 
 sub PRINT {
     my ($stream, @items) = @_;
     Emacs::Lisp::princ (join ('', @items),
 			Emacs::Lisp::symbol_value ($$stream));
+    return (1);
 }
 
 
@@ -171,14 +173,15 @@ sub TIEHANDLE {
 sub WRITE {
     my ($stream, $output, $length, $offset) = @_;
     Emacs::Lisp::message (substr ($output, $offset, $length));
+    return ($length);
 }
 
 sub READ {
-    die ("read() from STDIN is not implemented in Perlmacs");
+    die ("read() from STDIN is not implemented in Emacs.pm");
 }
 
 sub READLINE {
-    return Emacs::Lisp::read_string ("Enter input: ");
+    return (Emacs::Lisp::read_string ("Enter input: "));
 }
 
 
@@ -266,10 +269,43 @@ Emacs - Redefine Perl's system primitives to work inside of Emacs
 
 =head1 DESCRIPTION
 
-This module replaces C<STDIN>, C<STDOUT>, C<STDERR>, C<%ENV>, and
-C<%SIG> with versions that work safely within an Emacs session.  In
-Perlmacs, it also defines a function named I<main>, which launches an
-Emacs editing session from within a script.
+This module replaces C<STDIN>, C<STDOUT>, C<STDERR>, C<%ENV>, C<%SIG>,
+C<exit>, and C<warn> (via C<$SIG{__WARN__}>) with versions that work
+safely within an Emacs session.  In Perlmacs, it also defines a
+function named I<main>, which launches an Emacs editing session from
+within a script.
+
+=head2 STDIN
+
+Reading a line from Perl's C<STDIN> filehandle causes a string to be
+read from the minibuffer with the prompt C<"Enter input: ">.  To show
+a different prompt, use:
+
+    $string = &read_string ("Prompt: ");
+
+=head2 STDOUT
+
+Printing to Perl's C<STDOUT> filehandle inserts text into the current
+buffer as though typed, unless you have changed the Lisp variable
+C<standard-output> to do something different.
+
+=head2 STDERR and `warn'
+
+Perl's C<warn> operator and C<STDERR> filehandle are redirected to the
+minibuffer.
+
+=head2 %ENV
+
+Access to C<%ENV> is redirected to the Lisp variable
+C<process-environment>.
+
+=head2 %SIG
+
+Setting signal handlers is not currently permitted under Emacs.
+
+=head2 exit
+
+C<exit> calls C<kill-emacs>.
 
 =head2 main (CMDLINE)
 
@@ -321,34 +357,6 @@ The arguments to C<main> correspond to the C<argv> of the C<main>
 function in a C program.  The first argument should be the program's
 invocation name, as in this example.  B<-q> inhibits running
 F<~/.emacs> (which is the point, after all).
-
-=head2 STDIN
-
-Reading a line from Perl's C<STDIN> filehandle causes a string to be
-read from the minibuffer with the prompt C<"Enter input: ">.  To show
-a different prompt, use:
-
-    $string = &read_string ("Prompt: ");
-
-=head2 STDOUT
-
-Printing to Perl's C<STDOUT> filehandle inserts text into the current
-buffer as though typed, unless you have changed the Lisp variable
-C<standard-output> to do something different.
-
-=head2 STDERR and `warn'
-
-Perl's C<warn> operator and C<STDERR> filehandle are redirected to the
-minibuffer.
-
-=head2 %ENV
-
-Access to C<%ENV> is redirected to the Lisp variable
-C<process-environment>.
-
-=head2 %SIG
-
-Setting signal handlers is not currently permitted under Emacs.
 
 
 =head1 BUGS

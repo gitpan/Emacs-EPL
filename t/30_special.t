@@ -3,6 +3,8 @@
 BEGIN { $| = 1; $^W = 1 }
 use Emacs::Lisp;
 
+#setq { $epl_debug = \*stderr }; $Emacs::EPL::debug_stderr = 1;
+
 @tests =
     (
      sub {

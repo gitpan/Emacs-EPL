@@ -1,8 +1,11 @@
 # Makefile for EPL (Emacs Perl) XEmacs package
-# In parent directory, make sure ../../XEmacs.rules and
-# ../../Local.rules exist, apply the patch at the end of this file to
-# ../../package-compile.el, execute "make -f xemacs/Makefile dist",
-# and ignore the error about "Cannot open load file: package-info.el".
+# CVS check out xemacs-packages (see www.xemacs.org), do cvs update
+# (see comments), copy Local.rules.template to Local.rules, rename the
+# Emacs-EPL-x.x directory "epl", move it to xemacs-packages/libs/,
+# apply the patch at the end of this file to
+# xemacs-packages/package-compile.el, execute "make -f xemacs/Makefile
+# dist" in the epl directory, and find your binary package in
+# xemacs-packages/../Packages.
 
 # Copyright (C) 2001 by John Tobey,
 # jtobey@john-edwin-tobey.org.  All rights reserved.
@@ -22,10 +25,8 @@
 #   Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston,
 #   MA 02111-1307  USA
 
-VERSION = 1.01
-AUTHOR_VERSION = $(shell perl -nle \
-	'print $$1, exit if /^\(defconst epl-version "([.\d]*).*\)/' \
-	lisp/epl.el)
+VERSION = 1.02
+AUTHOR_VERSION = $(shell perl Makefile.PL print_package_version)
 MAINTAINER = John Tobey <jtobey@john-edwin-tobey.org>
 PACKAGE = epl
 PKG_TYPE = regular
@@ -37,6 +38,10 @@ EXTRA_SOURCES = README COPYING
 LISPFILES = $(shell grep '\.el$$' MANIFEST)
 ELCS = $(LISPFILES:.el=.elc)
 
+INFO_FILES = doc/$(PACKAGE).info*
+TEXI_FILES = doc/epl.texi doc/fdl.texi doc/version.texi
+MAKEINFO_FLAGS = -I doc
+
 DATA_FILES = $(wildcard lib/*.pm)
 DATA_DEST = perllib
 DATA_1_FILES = $(wildcard lib/Emacs/*.pm)
@@ -46,7 +51,13 @@ AUTOLOAD_PATH = lisp
 
 include ../../XEmacs.rules
 
-all:: $(AUTOLOAD_PATH)/auto-autoloads.elc $(ELCS)
+all:: $(AUTOLOAD_PATH)/auto-autoloads.elc $(ELCS) doc/$(PACKAGE).info
+
+doc/epl.info: $(TEXI_FILES)
+	makeinfo -I doc -o $@ doc/epl.texi
+
+doc/version.texi: Makefile.PL lisp/epl.el
+	perl Makefile.PL write_version_texi
 
 srckit: srckit-std
 

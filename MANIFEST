@@ -3,6 +3,7 @@ lib/Emacs/Lisp.pm
 lib/Emacs.pm
 t/00_boot.t
 t/10_conv.t
+t/11_cyclic.t
 t/20_tie.t
 t/30_special.t
 t/40_error.t
@@ -16,6 +17,13 @@ ChangeLog
 Makefile.PL
 MANIFEST
 MANIFEST.SKIP
+.cvsignore
 xemacs/Makefile
 xemacs/package-info.in
 COPYING
+doc/epl.texi
+doc/version.texi
+doc/fdl.texi
+doc/epl.info
+doc/epl.html
+doc/.cvsignore

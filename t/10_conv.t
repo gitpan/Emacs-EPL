@@ -1,4 +1,4 @@
-# -*-perl-*-
+# -*-cperl-*-
 
 BEGIN { $| = 1; $^W = 1 }
 use Emacs::Lisp;
@@ -28,6 +28,7 @@ use Emacs::Lisp;
      sub { "@{Emacs::Lisp::Object->can('list')->(3,4)->to_perl}" eq "3 4" },
      sub { &aref (\ [8, 7, 6], 2) == 6 },
      sub { $#${&make_vector (5, undef)} == 4 },
+     sub { &copy_sequence ("d'oh") eq "d'oh" },
     );
 
 print "1..".@tests."\n";

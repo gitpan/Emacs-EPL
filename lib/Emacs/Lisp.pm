@@ -84,6 +84,8 @@ my $can = sub {
 	and do {
 	    my ($f);
 	    $f = Emacs::Lisp::Object::symbol_function ($symbol);
+	    # XXX should save some communication by using &Emacs::Lisp::consp
+	    # and &Emacs::Lisp::car.
 	    ($f->consp->is_nil) or $f->car->eq (\*::macro)->is_nil;
 	}) {
 	return eval { &$get_funcall_closure };
@@ -248,6 +250,12 @@ sub import {
      funcs	=> [qw(
 		       funcall
 		       AUTOLOAD
+		       cons
+		       consp
+		       car
+		       cdr
+		       setcar
+		       setcdr
 		       )],
      special	=> [qw(
 		       catch
@@ -570,6 +578,8 @@ sub unwind_protect {
     }
     return (&eval ([\*::unwind_protect,
 		    [\*::perl_call, $body],
+		    # XXX should save some possible work by adding
+		    # \*::void_context.
 		    [\*::perl_call, $handler]]));
 }
 
@@ -580,7 +590,7 @@ __END__
 
 =head1 NAME
 
-Emacs::Lisp - Support for running Perl in Emacs
+Emacs::Lisp - Support for writing Emacs extensions in Perl
 
 =head1 SYNOPSIS
 
@@ -723,10 +733,9 @@ string conversion.
 
 =item * Lisp symbols correspond to globrefs.
 
-Glob references in package C<main> become symbols in Lisp.
-Underscores are swapped with hyphens in the name, since Perl prefers
-underscores and Lisp prefers hyphens.  See L</Symbols> for more
-information.
+Glob references become symbols in Lisp.  Underscores are swapped with
+hyphens in the name, since Perl prefers underscores and Lisp prefers
+hyphens.  See L</Symbols> for more information.
 
 =item * Lisp's `nil' is equivalent to Perl's `undef' or `()'.
 
@@ -757,6 +766,21 @@ in Lisp.
 
 Adding C<\> to an arrayref makea it an arrayref ref, which becomes a
 vector in Lisp.  For example, C<\[1, 2, undef]> becomes C<[1 2 nil]>.
+
+=item * Conses that are not lists become Emacs::Lisp::Cons objects.
+
+Compatibility note:  Perlmacs does not have this feature.
+
+    $x = &cons("left", "right");
+    print ref($x);                # "Emacs::Lisp::Cons"
+    print $x->car;                # "left"
+    print $x->cdr;                # "right"
+
+But:
+
+    $x = &cons ("top", undef);    # a Lisp list
+    print ref($x);                # "ARRAY"
+    print $x->[0];                # "top"
 
 =item * Conversion uses "deep" copying by default.
 
@@ -881,18 +905,14 @@ the C<beep> symbol:
 
     (run-at-time nil 1 'beep)
 
-EPL uses glob references of package I<main> to specify symbols.
-A literal globref begins with a backslash followed by an asterisk, so
-the last example would be written as
+EPL uses glob references to specify symbols.  A literal globref begins
+with a backslash followed by an asterisk, so the last example would be
+written as
 
     &run_at_time(undef, 1, \*beep);
 
 in Perl.  (You may want to do C<&cancel_function_timers(\*beep)> soon
 after trying this example.)
-
-Only globs from package I<main> may be used as Lisp symbols, so code
-that is compiled in another package must use the form C<\*::sym>
-rather than C<\*sym>.
 
 When comparing the returned values of Lisp functions to each other and
 to symbols, it is best to use the Lisp C<eq> function instead of
@@ -1154,26 +1174,23 @@ Emacs::Lisp functions, Emacs::Lisp tries to run Emacs in batch mode.
 This only works with GNU Emacs 21 beta, not Emacs 20 or XEmacs.  This
 can probably be fixed, but I don't know what the problem is yet.
 
+A real solution would involve talking to Emacs on a channel other than
+its standard input and output.  This might allow one to run in
+interactive mode with arbitrary command line options.  I don't know if
+Emacs can use arbitrary file descriptors or named pipes.  I suspect
+not.  If not, I guess I'll try inet sockets.  Other possibilities
+would be ptys (Emacs loves them, I'm not overly fond) and an
+intermediary perl process that talks to the original process over a
+named pipe.
+
 =item * Within Lisp code, everything defaults to package `main'.
 
 It would perhaps be best to give the Lisp evaluation environment the
 notion of a "current package" such as Perl has.
 
-=item * Circular Lisp data structures cannot be converted to Perl.
-
-Perl-to-Lisp works okay.  Support is partly there.
-
 =item * Symbols whose names contain :: or '
 
 How can we convert them to and from Perl?
-
-=item * 'return', 'goto', etc. in perl-eval
-
-I haven't tried, but they probably destabilize things.
-
-=item * 'signal' in Lisp eval
-
-One of the test scripts fails in 'signal'.
 
 =item * High IPC overhead
 
@@ -1184,18 +1201,6 @@ weren't, it's bound to be a lot slower than Perlmacs.
 
 What to do?  Produce tied hashes whose keys can be any Lisp object?
 Wrap hashes that contain non-string keys?
-
-=item * Conversion of cons type is in doubt.
-
-Should cons be converted to an opaque Emacs::Lisp::Object or a
-translucent special Emacs::Lisp::Cons type?  What about lambda
-expressions?
-
-=item * Need a way to specify scalar conversion type.
-
-You should be able to decide whether a scalar becomes a Lisp integer,
-float, or string.  Using Perl 5.005 sometimes gives different results
-from Perl 5.6.
 
 =item * XEmacs package autoloads commands but not key bindings.
 
@@ -1211,11 +1216,20 @@ I need to figure out how to do this.
 =item * Conversion of scalar types is uncertain.
 
 A defined, non-reference Perl scalar converted to Lisp becomes either
-an integer, a float, or a string.  Which one is unclear.  This could
-be considered a bug, but it is somewhat inherent in the languages'
-semantics.
+an integer, a float, or a string.  The method of choice is unclear.
+This could be considered a bug, but it is somewhat inherent in the
+languages' semantics, as Perl has no really good way to distinguish a
+number from an equivalent string or an integer from a float.
 
-=item * Circular data structures are bad.
+=item * Conversion is not always reversible.
+
+Information may be lost through the default (``deep'') data conversion
+process.  For example, the glob reference C<\*::nil> and an empty
+arrayref both become C<undef> when converted to Lisp and back.  Perl
+and Emacs support different ranges for integer values.  Integers that
+don't fit are upgraded to floats, so the distinction is lost.
+
+=item * Circular data structures are troublesome.
 
 See L<perlobj/"Two-Phased Garbage Collection">.  Lisp data structures
 may be recursive (contain references to themselves) without the danger
@@ -1251,6 +1265,24 @@ does not yet know how to use them.
 =head1 TO DO
 
 =over 4
+
+=item * Transport layer that will allow interactive slave Emacs
+
+=item * Finish texinfo doc
+
+=item * Garbage collection for XEmacs
+
+=item * Debian package target
+
+=item * Overload Emacs::Lisp::Object in various ways
+
+=item * Formal rules for scalar type conversion
+
+=item * Document and regression-test multiple Emacses under Perl
+
+=item * Steal from IPC::Open2
+
+=item * Optimized regex find and replace functions
 
 =item * Multibyte characters
 

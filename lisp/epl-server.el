@@ -35,6 +35,8 @@
 			    (format "Version mismatch: %s versus epl.el %s"
 				    you me) ")"))))
   ;; Answer the START and loop until told to exit.
-  (epl-send-and-receive "&cb_return()"))
+  (epl-debug "Server start, pid " (emacs-pid) "\n")
+  (epl-send-and-receive "&cb_return()")
+  (epl-debug "Server stop, pid " (emacs-pid) "\n"))
 
 (kill-emacs)

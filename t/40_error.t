@@ -132,7 +132,9 @@ END {
 
     # FIXME:  Weird.  This works too, but $@ is reported as empty
     #report (($@ =~ /xxxtop-level/), $@);
-    report (($@ =~ /top-level/), $@);
+    #report (($@ =~ /top-level/), $@);
+    my $x = $@ =~ /Attempt to destroy a top-level Perl/;
+    report ($x, $@);
     &garbage_collect;
     $? = 0;
 }

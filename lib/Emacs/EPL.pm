@@ -10,10 +10,11 @@ require 5.000;  # well, it's a fantasy of mine.
 use strict;
 no strict 'refs';
 use vars ('$VERSION', '$emacs', '$exiting', '$debug_stderr');
+use Carp;
 
 #$debug_stderr = 1;
 
-$VERSION = '0.005';
+$VERSION = '0.006';
 
 BEGIN {
     # Set inlinable constants based on feature tests.
@@ -209,7 +210,7 @@ sub Emacs::Lisp::Object::epl_print_as_lisp {
 
     if ($$e {'id'} == $$emacs {'id'}) {
 	delete ($emacs->{'seen'}->{ &get_ref_id });
-	print( ",(epl-cb-handle-to-object $handle)");
+	print( ",(epl-cb-handle-to-lisp $handle)");
     }
     else {
 	print_blessed_ref ($value, ref ($value), \&ARRAY::epl_print_as_lisp);
@@ -237,9 +238,9 @@ sub REF::epl_print_as_lisp {
 	print( "]");
     }
     else {
-	print( ",(epl-cb-ref `");
+	print( ",(make-perl-ref `");
 	local $emacs->{'pos'}
-	    = "(perl-ref-value $$emacs{'pos'})";
+	    = "(perl-ref $$emacs{'pos'})";
 	print_recursive ($value);
 	print( ")");
     }
@@ -270,8 +271,8 @@ sub HASH::epl_print_as_lisp {
     print( ",(epl-cb-make-hash-table");
     while (my ($k, $v) = each (%$value)) {
 	# XXX Force key to be a string or symbol - avoids issues.
-	my ($pkg, $name) = get_globref_stuff ($k);
-	if (defined ($pkg) && $pkg eq 'main') {
+	my ($name) = get_globref_name ($k);
+	if (defined ($name)) {
 	    $k = "'" . escape_symbol ($name);
 	}
 	else {
@@ -287,19 +288,17 @@ sub HASH::epl_print_as_lisp {
 }
 
 sub GLOB::epl_print_as_lisp {
-    my ($pkg, $name) = get_globref_stuff ($_[0]);
-    if (defined ($pkg)) {
-	if ($pkg eq 'main') {
-	    print( escape_symbol( $name));
-	}
-	else {
-	    $name =~ s/\\/\\\\/g;
-	    $name =~ s/\"/\\\"/g;
-	    print( qq((perl-globref "$pkg\::$name")));
-	}
+    my ($name) = get_globref_name ($_[0]);
+    if (defined ($name)) {
+	print( escape_symbol( $name));
+	# The object is a reference but not a container.  Don't invoke
+	# the circularity-tracking apparatus just because a symbol
+	# appears twice in output.
 	delete ($emacs->{'seen'}->{ &get_ref_id });
     }
     else {
+	# XXX how here?
+	warn ("got here") if $debug_stderr;
 	&print_opaque;
     }
 }
@@ -314,19 +313,19 @@ sub Emacs::Stream::epl_print_as_lisp {
 }
 
 # Return the package and short name of the glob referred to.
-sub get_globref_stuff {
+sub get_globref_name {
     my $gr = shift;
-    return () unless UNIVERSAL::isa ($gr, 'GLOB');
-    my $str = substr (*$gr, 1);  # stringify and skip "*"
-    my ($pkg, $name) = ($str =~ m/^(.*)::(.*)$/);
-    return ($pkg, $name);
+    return (undef) unless UNIVERSAL::isa ($gr, 'GLOB');
+    my $name = substr (*$gr, 1);  # stringify and skip "*"
+    $name =~ s/^(::|main)+//;
+    return ($name);
 }
 
 sub escape_symbol {
     my $name = shift;
     $name =~ tr/-_/_-/;
     $name =~ s/([^a-zA-Z0-9\-+=*\/_~!\@\$%^&:\<\>{}])/\\$1/g;
-    return ($name);
+    return ($name =~ m/^-?\d+$/ ? "\\$name" : $name);
 }
 
 # CODE refs are wrapped like opaque objects but enclosed in a lambda
@@ -334,9 +333,6 @@ sub escape_symbol {
 sub CODE::epl_print_as_lisp {
     print( ",(epl-cb-coderef ", &cb_ref_to_handle, ")");
 }
-
-# XXX Conses.  Should inherit from Emacs::Lisp::Object?
-# Should define subs car, cdr, setcar, setcdr, car-safe, cdr-safe, consp?
 
 sub Emacs::Lisp::Cons::epl_print_as_lisp {
     my ($value) = @_;
@@ -353,8 +349,36 @@ sub Emacs::Lisp::Cons::epl_print_as_lisp {
     print( ")");
 }
 
+sub Emacs::Lisp::Cons::new {
+    my ($class, %args) = @_;
+    my $cons = bless ([ delete (@args{'car', 'cdr'}) ], $class);
+    if (%args) {
+	croak ("Emacs::Lisp::Cons::new: invalid named argument(s): "
+	       . join (' ', keys (%args)));
+    }
+    return ($cons);
+}
+
+sub Emacs::Lisp::Cons::car { return ($_[0]->[0]); }
+sub Emacs::Lisp::Cons::cdr { return ($_[0]->[1]); }
+sub Emacs::Lisp::Cons::setcar { return ($_[0]->[0] = $_[1]); }
+sub Emacs::Lisp::Cons::setcdr { return ($_[0]->[1] = $_[1]); }
+
 {
     package Emacs::Lisp::Exception;
+
+    sub new {
+	my ($class, %args) = @_;
+	my $self = [ delete (@args {'string', 'object'}) ];
+	if (%args) {
+	    croak ("Emacs::Lisp::Exception::new: invalid named argument(s): "
+		   . join (' ', keys (%args)));
+	}
+	if (! defined ($$self [0])) {
+	    $$self [0] = 'Lisp error';
+	}
+	return (bless ($self, $class));
+    }
 
     sub get_object {
 	return ($_[0]->[1]);
@@ -383,7 +407,7 @@ sub Emacs::Lisp::Opaque::epl_print_as_lisp {
 
 sub print_opaque {
     delete ($emacs->{'seen'}->{ &get_ref_id });
-    print( ",(epl-cb-handle-to-perl-value ", &cb_ref_to_handle, ")");
+    print( ",(epl-cb-handle-to-perl ", &cb_ref_to_handle, ")");
 }
 
 # This function exists so that circular data structures can be converted.
@@ -406,20 +430,13 @@ sub fixup {
     {
 	return ("(puthash $1 $that $2)");
     }
-    if ($this =~ m/^\(perl-ref-value (.*)\)$/) {
-	return ("(perl-ref-set-value $1 $that)");
+    if ($this =~ m/^\(perl-ref (.*)\)$/) {
+	return ("(perl-ref-set $1 $that)");
     }
     die ($this);
 }
 
 # Perl data referenced in Lisp.
-
-# XXX This stuff probably belongs in $emacs.
-my ($handle_to_opaque, $next_handle, $id_to_handle);
-
-$handle_to_opaque = {};
-$next_handle = 1;
-$id_to_handle = {};
 
 # Subs whose names begin in "cb_" may be called by evalled messages.
 # They assume that $emacs is valid.
@@ -428,19 +445,19 @@ sub cb_ref_to_handle {
     my ($id, $handle);
 
     $id = get_ref_id ($_[0]);
-    $handle = $$id_to_handle {$id};
+    $handle = $emacs->{'ref_id_to_handle'}->{$id};
     if (! defined ($handle)) {
-	$handle = $next_handle++;
-	$$handle_to_opaque {$handle} = $_[0];
-	$$id_to_handle {$id} = $handle;
+	$handle = $emacs->{'next_handle'}++;
+	$emacs->{'handle_to_opaque'}->{$handle} = $_[0];
+	$emacs->{'ref_id_to_handle'}->{$id} = $handle;
     }
     return ($handle);
 }
 
 sub cb_handle_to_ref {
     my ($handle) = @_;
-    if (exists ($$handle_to_opaque {$handle})) {
-	return ($$handle_to_opaque {$handle});
+    if (exists ($emacs->{'handle_to_opaque'}->{$handle})) {
+	return ($emacs->{'handle_to_opaque'}->{$handle});
     }
     else {
 	die ("Stale object handle $handle\n");
@@ -464,25 +481,23 @@ sub cb_free_refs_except {
     my $new_i2h = {};
     while (@_) {
 	my $handle = shift;
-	my $obj = $$handle_to_opaque {$handle};
+	my $obj = $emacs->{'handle_to_opaque'}->{$handle};
 	$$new_h2o {$handle} = $obj;
-	$$new_i2h {$obj + 0} = $handle;
+	$$new_i2h { get_ref_id ($obj) } = $handle;
     }
-    $handle_to_opaque = $new_h2o;
-    $id_to_handle = $new_i2h;
+    $emacs->{'handle_to_opaque'} = $new_h2o;
+    $emacs->{'ref_id_to_handle'} = $new_i2h;
     return undef;  # Avoid sending a meaningless return value.
 }
 
 # Handle an UNREF type message in which Lisp promises never again to refer
 # to the given handles.
-# XXX should handle the case where more than one Emacs references the same
-# object. (explicit refcounts in $handle_to_opaque?)
 sub cb_unref {
     while (@_) {
 	my $handle = shift;
-	my $ref = delete ($$handle_to_opaque {$handle});
+	my $ref = delete ($emacs->{'handle_to_opaque'}->{$handle});
 	if ($ref) {
-	    delete ($$id_to_handle { get_ref_id ($ref) });
+	    delete ($emacs->{'ref_id_to_handle'}->{ get_ref_id ($ref) });
 	}
     }
     return undef;  # Avoid sending a meaningless return value.
@@ -519,8 +534,7 @@ sub send_message {
     my ($ofh, $err);
 
     if ($$emacs {'exited'}) {
-	require Carp;
-	Carp::croak ("Emacs has exited");
+	croak ("Emacs has exited");
     }
 
     $ofh = select ($$emacs {'out'});
@@ -532,7 +546,7 @@ sub send_message {
 
     if ($debug_stderr) {
 	select (STDERR);
-	print( ">>> ");
+	print( "P>>> ");
 	&print_stuff;
 	print( "\n");
 	select ($$emacs {'out'});
@@ -559,15 +573,25 @@ sub send_and_receive {
 $Emacs::next_id = 1;
 
 sub Emacs::new {
-    my ($class, %args) = @_;
-    $args {'id'} = $Emacs::next_id++;
-    return ($Emacs::id_to_emacs {$args {'id'}} = bless (\%args, $class));
+    my $class = shift;
+    my $id = $Emacs::next_id++;
+    my $self = bless ({
+		       'id' => $id,
+		       # Hmm.  Maybe a global handle space would be nice.
+		       'handle_to_opaque' => {},
+		       'next_handle' => 1,
+		       'ref_id_to_handle' => {},
+		       @_
+		      }, $class);
+    $Emacs::id_to_emacs {$id} = $self;
+    return ($self);
 }
 
 # XXX We should really implement our own open2 to make sure nothing
 # funny happens with %ENV or %SIG.  This would further eliminate the
 # restriction on module ordering, because we would use our duped
-# STDIN and STDOUT instead of the possibly tied versions.
+# STDIN and STDOUT instead of the possibly tied versions.  And it
+# would let us play with emacs's argv[0] by using exec PROGRAM LIST.
 sub my_open2 {
 
     # Don't ask why, because I don't know.
@@ -583,10 +607,31 @@ sub my_open2 {
     goto &my_open2;
 }
 
+# Die unless it's okay to operate on the given Emacs.
+# Return true if operating on it requires setting $emacs.
+sub local_check {
+    return 1 if ! defined ($emacs);
+    return 0 if $emacs == $_[0];
+    return 1 if ! $$emacs {'in_DESTROY'};
+    # This could be avoided by rewriting this module to use lexicals.
+    # It is a consequence of Perl bug 20010205.006, which causes SEGV
+    # in perl -e 'sub DESTROY { local $o } local $o = bless []; print;'.
+    confess ("Can't operate on one Emacs while another is under destruction");
+}
+
+# Return true if it's safe to localize $emacs.
+sub local_safe {
+    return ((! defined ($emacs)) || (! $$emacs {'in_DESTROY'}));
+}
+
 # Avoid using %ENV in Emacs::start(), because %ENV may be tied by then.
 my $ENV_EMACS = $ENV{'EMACS'};
 
 sub Emacs::start {
+    if (! local_safe ()) {
+	confess ("Can't create an Emacs while another is under destruction");
+    }
+
     my ($class) = @_;
     local (*READ, *WRITE);
     my ($prog, $vers, $where_i_am, @minus_L, $pid);
@@ -625,8 +670,7 @@ sub Emacs::start {
 		     "-l", "epl-server", $vers);
 
     if (! $pid) {
-	require Carp;
-	Carp::croak ("Can't run $prog: $!");
+	croak ("Can't run $prog: $!");
     }
 
     local $emacs = $class->new (
@@ -634,6 +678,7 @@ sub Emacs::start {
 				'out' => *WRITE,
 				'pid' => $pid,
 				'depth' => 0,
+				'role' => 'server',
 			       );
 
     # Wait for the handshake message.
@@ -648,22 +693,23 @@ sub Emacs::start {
 
 # Shut down an Emacs instance.
 sub Emacs::stop {
-    local $emacs = shift;
-
     # Allow package method Emacs->stop to act implicitly on
     # $Emacs::current, but do nothing if not currently active.
-    if (! (ref ($emacs))) {
+    if (! (ref ($_[0]))) {
 	if (ref ($Emacs::current)) {
 	    $Emacs::current->stop;
 	}
 	return;
     }
 
-    # If it's not our child, it's our parent.  Stopping it should result
+    local $emacs = $_[0] if &local_check;
+
+    return if $$emacs {'exited'};
+
+    # If it's not our child, it's our parent.  Stopping it would result
     # in our exit.
-    if (! defined ($$emacs {'pid'})) {
-	Emacs::Lisp::funcall (\*::kill_emacs);
-	die ("kill-emacs did not work as expected");
+    if ($$emacs {'role'} eq 'client') {
+	croak ("Emacs::stop: can't stop my parent process; use &kill_emacs()");
     }
 
     if ($$emacs {'depth'} > 0) {
@@ -673,30 +719,48 @@ sub Emacs::stop {
 	die (".Emacs::EPL EXIT\n");
     }
 
-    delete ($Emacs::id_to_emacs {$$emacs {'id'}});
-
-    if ($$emacs {'exited'}) {
-	return;
-    }
     send_message ('pop');
+    $emacs->free;
+}
+
+sub Emacs::free {
+    local $emacs = $_[0] if &local_check;
+
+    delete ($Emacs::id_to_emacs {$$emacs {'id'}});
     $$emacs {'exited'} = 1;
+    if (defined ($Emacs::current)
+	&& $Emacs::current == $emacs)
+    {
+	$Emacs::current = undef;
+    }
 
     close ($$emacs {'in'});
     close ($$emacs {'out'});
     if (defined ($$emacs {'pid'})) {
+	local ($?);
 	waitpid ($$emacs {'pid'}, 0);
+	$$emacs {'wstat'} = $?;
     }
 }
 
 sub Emacs::DESTROY {
-    shift () ->stop;
+    return if $exiting;
+    my ($emacs) = @_;
+    local $$emacs {'in_DESTROY'} = 1;
+    local ($@);
+    eval { $emacs->stop };
+    if ($@) { $emacs->free; }
 }
 
 END {
     Emacs::cleanup () if defined (&Emacs::cleanup);
     $exiting = 1;
-    @Emacs::id_to_emacs { keys (%Emacs::id_to_emacs) } = ();
-    $Emacs::current = undef;
+    undef ($Emacs::current);
+    for my $e (values %Emacs::id_to_emacs) {
+	local ($@);
+	eval { $e->stop; };
+	warn $@ if $@;
+    }
     if (scalar (keys %Emacs::id_to_emacs) != 0) {
 	warn (scalar (keys %Emacs::id_to_emacs) . " Emacs processes"
 	      ." still referenced at shutdown.\n");
@@ -709,15 +773,12 @@ sub check_version_and_args {
     if (defined ($desired)) {
 	local $^W = 0;
 	if ($desired != $VERSION) {
-	    require Carp;
-	    Carp::croak ("Version mismatch: $desired versus"
-			 . " Emacs::EPL $VERSION");
+	    croak ("Version mismatch: $desired versus Emacs::EPL $VERSION");
 	}
     }
     if (scalar (@bad_args) != 0) {
-	require Carp;
-	Carp::croak ("Unknown 'use Emacs::EPL' usage: "
-		     . join (', ', map { "'$_'" } @bad_args));
+	croak ("Unknown 'use Emacs::EPL' usage: "
+	       . join (', ', map { "'$_'" } @bad_args));
     }
 }
 
@@ -763,9 +824,8 @@ sub import {
 # This must happen before Emacs.pm gets its grubby paws on STDIN et al.
 sub server_init {
     if (tied (*STDIN) || tied (*STDOUT)) {
-	require Carp;
-	Carp::croak ("STD handles tied too early,"
-		     . " import Emacs::EPL before Emacs.pm");
+	croak ("STD handles tied too early,"
+	       . " import Emacs::EPL before Emacs.pm");
     }
 
     open (OUT, ">&=" . fileno (STDOUT))
@@ -784,6 +844,7 @@ sub server_init {
 			 # which increments rather than decrements depth
 			 # regardless of the type of message being sent.
 			 'depth' => -1,
+			 'role' => 'client',
 			);
     $Emacs::current = $emacs;
 }
@@ -843,6 +904,18 @@ sub loop {
     return;
 }
 
+sub read_error {
+    my $msg = "Read error: Emacs seems to have died";
+    if ($!) {
+	$msg .= " ($!)";
+    }
+    $emacs->free;
+    if ($$emacs {'wstat'}) {
+	$msg .= " (wstat $$emacs{'wstat'})";
+    }
+    croak ($msg);
+}
+
 # Loop answering CALL and UNREF messages.  Finish when we get a RETURN,
 # RAISE, POP, or EXIT.  If we get a POP, send a RETURN and raise a SKIP.
 # If we get an EXIT, raise another EXIT.  But if it's the outermost
@@ -857,14 +930,22 @@ sub loop_1 {
 	local ($$emacs {'retval'});
 
 	$len = readline ($$emacs {'in'});
+	if (! defined ($len)) {
+	    read_error ();
+	}
+
 	# XXX GNU Emacs 21 prints this prompt in batch mode.
 	$len =~ s/^(?:Lisp expression: )+//;
 	chomp ($len);
+	if ($len eq '') {
+	    read_error ();
+	}
 
-	# XXX handle errors more robustly.
-	read ($$emacs {'in'}, $input, $len) == $len || die;
+	if (read ($$emacs {'in'}, $input, $len) != $len) {
+	    read_error ();
+	}
 	if ($debug_stderr) {
-	    print STDERR ("<<< $input\n");
+	    print STDERR ("P<<< $input\n");
 	}
 
 	$done = 0;
@@ -920,8 +1001,7 @@ sub loop_1 {
 		if ($$emacs {'depth'} == 1) {
 		    $$emacs {'depth'} = 0;
 		    $emacs->stop;
-		    require Carp;
-		    Carp::croak ("Exited a calling Emacs");
+		    croak ("Exited a calling Emacs");
 		}
 		send_and_receive ('pop');
 		die (".Emacs::EPL EXIT\n");
@@ -939,7 +1019,8 @@ sub loop_1 {
 	    if ($caught eq "RAISE\n") {
 		my ($string, $object) = @ { $$emacs {'retval'} };
 		if (defined ($object)) {
-		    die (bless [ $string, $object ], 'Emacs::Lisp::Exception');
+		    die (Emacs::Lisp::Exception->new
+			 ( 'string' => $string, 'object' => $object ));
 		}
 		# Exception of Perl type.
 		die ($string);
@@ -962,8 +1043,15 @@ sub loop_1 {
     }
 }
 
+sub local_current {
+    if (! local_safe ()) {
+	confess ("Can't call Lisp while an Emacs is under destruction");
+    }
+    return $Emacs::current ||= Emacs->start;
+}
+
 sub Emacs::Lisp::funcall {
-    local $emacs = $Emacs::current ||= Emacs->start;
+    local $emacs = local_current ();
 
     if (defined (wantarray)) {
 	return (send_and_receive ('call', \@_));
@@ -972,11 +1060,12 @@ sub Emacs::Lisp::funcall {
 }
 
 sub Emacs::Lisp::Object::funcall {
+    local $emacs = local_current ();
+
     if (defined (wantarray)) {
-	local $emacs = $Emacs::current ||= Emacs->start;
 	return (send_and_receive ('call-raw', \@_));
     }
-    &Emacs::Lisp::funcall;
+    send_and_receive ('call-void', \@_);
 }
 
 # Promise Lisp that we will not refer to this handle any more.
@@ -994,9 +1083,9 @@ sub Emacs::Lisp::Object::DESTROY {
 
     # If Emacs has exited (`Emacs->stop'), do nothing.  The handle is
     # already invalid.
-    return if $$emacs {'exited'};
+    return if $$emacs {'exited'} || $$emacs {'in_DESTROY'};
 
-    local $emacs = $e;
+    local $emacs = $e if local_check ($e);
     send_and_receive ('unref', [ $handle ]);
 }
 
@@ -1005,13 +1094,104 @@ sub Emacs::Lisp::Object::to_perl {
     if (! UNIVERSAL::isa ($_[0], 'Emacs::Lisp::Object')) {
 	return ($_[0]);
     }
-    local $Emacs::current = $_[0]->[0];  # XXX hmmm.
-    return (Emacs::Lisp::funcall (\*::epl_echo_one_arg, $_[0]));
+    local $emacs = $_[0]->[0] if local_check ($_[0]->[0]);
+    return send_and_receive ('call', [ \*::epl_echo_one_arg, $_[0] ]);
 }
 
 sub Emacs::Lisp::lisp {
     return unless defined (wantarray);
     return (Emacs::Lisp::Object::funcall (\*::epl_echo_one_arg, $_[0]));
+}
+
+sub check_arg_count {
+    my ($fn, $got, $expected) = @_;
+
+    return if $got == $expected;
+    die (Emacs::Lisp::Exception->new
+	 ('string' => "Wrong number of arguments: $fn, $got",
+	  'object' => [\*::wrong_number_of_arguments, \*{"::$fn"}, $got]));
+}
+
+sub Emacs::Lisp::cons {
+    check_arg_count ('cons', scalar(@_), 2);
+    my ($car, $cdr) = @_;
+
+    if (defined ($cdr)) {
+	return (bless ([ $car, $cdr ], 'Emacs::Lisp::Cons'));
+    }
+    else {
+	return ([ $car ]);
+    }
+}
+
+sub Emacs::Lisp::consp {
+    check_arg_count ('consp', scalar(@_), 1);
+    return \*::t if ref ($_[0]) eq 'ARRAY' && scalar ($_[0]) > 0;
+    return \*::t if UNIVERSAL::isa ($_[0], 'Emacs::Lisp::Cons');
+    return undef;
+}
+
+sub check_cons {
+    my ($obj) = @_;
+    return $obj if Emacs::Lisp::consp ($obj);
+    die (Emacs::Lisp::Exception->new
+	 ('string' => "Wrong type argument: listp, $obj",
+	  'object' => [\*::wrong_type_argument, \*::listp, $obj]));
+}
+
+sub Emacs::Lisp::car {
+    check_arg_count ('car', scalar(@_), 1);
+    my $cons = check_cons ($_[0]);
+    return $$cons [0] if ref ($cons) eq 'ARRAY';
+    return ($cons->car);
+}
+
+sub Emacs::Lisp::cdr {
+    check_arg_count ('cdr', scalar(@_), 1);
+    my $cons = check_cons ($_[0]);
+    return [ @$cons [1..$#$cons] ] if ref ($cons) eq 'ARRAY';
+    return ($cons->cdr);
+}
+
+sub Emacs::Lisp::setcar {
+    check_arg_count ('setcar', scalar(@_), 2);
+    my ($cons, $obj) = @_;
+    check_cons ($cons);
+    return $$cons [0] = $obj if (ref ($cons) eq 'ARRAY');
+    return ($cons->setcar ($obj));
+}
+
+sub Emacs::Lisp::setcdr {
+    check_arg_count ('setcdr', scalar(@_), 2);
+    my ($cons, $obj) = @_;
+    check_cons ($cons);
+
+    if (ref ($cons) eq 'ARRAY') {
+	# Calling setcdr on a Perl array?  Hmm.  You get what you deserve...
+	if (defined ($obj)) {
+	    splice (@$cons, 1, $#$cons, $obj);
+	    bless ($cons, 'Emacs::Lisp::Cons');
+	}
+	else {
+	    @$cons [1..$#$cons] = ();
+	}
+    }
+    else {
+	$cons->setcdr ($obj);
+    }
+    return ($obj);
+}
+
+sub Emacs::Lisp::car_safe {
+    check_arg_count ('car_safe', scalar(@_), 1);
+    my ($cons) = @_;
+    return (Emacs::Lisp::consp ($cons) && Emacs::Lisp::car ($cons));
+}
+
+sub Emacs::Lisp::cdr_safe {
+    check_arg_count ('cdr_safe', scalar(@_), 1);
+    my ($cons) = @_;
+    return (Emacs::Lisp::consp ($cons) && Emacs::Lisp::cdr ($cons));
 }
 
 1;

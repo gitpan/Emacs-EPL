@@ -21,9 +21,32 @@
 
 use ExtUtils::MakeMaker;
 
+my $version = get_version_from_el ();
+
+if ($ARGV[0] eq 'print_package_version') {
+    print $version;
+    exit;
+}
+
+if ($ARGV[0] eq 'write_version_texi') {
+    open (VERSION, ">doc/version.texi")
+	|| die ("Can't write doc/version.texi: $!");
+    print VERSION "\@c !!! THIS IS A GENERATED FILE !!!\n";
+    print VERSION "\@c !!! DO NOT UPDATE THIS FILE !!!\n";
+    print VERSION "\@c !!! UPDATE $0 INSTEAD !!!\n";
+    my ($day, $mon, $year) = ((localtime ((stat "doc/epl.texi")[9]))[3, 4, 5]);
+    printf VERSION "\@set UPDATED %d %s %d\n", $day,
+	(qw(January February March April May June July
+	   August September October November December))[$month], $year + 1900;
+    print VERSION "\@set EDITION 0.1\n";
+    print VERSION "\@set VERSION $version\n";
+    close (VERSION);
+    exit;
+}
+
 WriteMakefile (
 	       'NAME'  => 'Emacs::EPL',
-	       'VERSION' => get_version_from_el (),
+	       'VERSION' => $version,
 	      );
 
 warn ("
@@ -45,6 +68,23 @@ sub get_version_from_el {
 
 sub MY::postamble {
     return q(
+TEXI_FILES = doc/epl.texi doc/fdl.texi doc/version.texi
+
+doc/epl.info: $(TEXI_FILES)
+	makeinfo -I doc -o $@ doc/epl.texi
+
+doc/epl.html: $(TEXI_FILES)
+	makeinfo -I doc --html -o $@ doc/epl.texi
+
+doc/version.texi: Makefile.PL lisp/epl.el
+	perl Makefile.PL write_version_texi
+
+all:: doc/epl.info doc/epl.html
+
+maintainer-clean:: realclean
+	rm -f doc/version.texi
+	rm -f doc/*.html doc/*.info*
+
 # Building XEmacs packages.  This has to happen in the xemacs-packages
 # CVS tree.  See xemacs/Makefile.
 
