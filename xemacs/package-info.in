@@ -5,7 +5,7 @@
    date DATE
    build-date BUILD_DATE
    maintainer MAINTAINER
-   distribution xemacs
+   distribution epl
    priority medium
    category CATEGORY
    dump nil

@@ -11,16 +11,14 @@ use Exporter ();
 
 use strict;
 use vars qw ( $VERSION @ISA $stuff_tied $old_warner @EXPORT );
+use vars qw ( *REAL_STDIN *REAL_STDOUT *REAL_STDERR $real_pid );
 
-$VERSION = '1.01';
+$VERSION = '1.02';
 
 @EXPORT = ('main', 'exit');
 # XXX also need to redefine `open' to use Emacs locking.
-# To think about: chdir, fork, exec, sleep, umask, wait, waitpid,
-# Cwd.pm stuff, sysopen, select, anything else that blocks,
-# kill (detect our pid or emacs's), chroot, alarm, ....
-# Hey, if we do all of these, we can call this a port of Perl to the
-# Emacs operating system!
+# To think about: fork, exec, umask, Cwd.pm stuff, sysopen, kill
+# (detect our pid or emacs's), chroot, alarm, ....
 
 sub import {
     if (scalar (@_) == 1) {
@@ -41,25 +39,50 @@ sub import {
 
 sub tie_stuff {
     return if $stuff_tied;
+
+    if (defined (fileno (STDIN)) && ! defined (fileno (REAL_STDIN))) {
+	open (REAL_STDIN, "<&=" . fileno (STDIN));
+    }
     tie (*STDIN, 'Emacs::Minibuffer');
+
+    if (defined (fileno (STDOUT)) && ! defined (fileno (REAL_STDOUT))) {
+	open (REAL_STDOUT, ">&=" . fileno (STDOUT));
+    }
     *::standard_output = *::standard_output;  # Avoid warnings.
     tie (*STDOUT, 'Emacs::Stream', \*::standard_output);
+
+    if (defined (fileno (STDERR)) && ! defined (fileno (REAL_STDERR))) {
+	open (REAL_STDERR, ">&=" . fileno (STDERR));
+    }
     tie (*STDERR, 'Emacs::Minibuffer');
+
     $old_warner = $SIG{'__WARN__'};
-    $SIG{'__WARN__'} = 'Emacs::do_warn';
+    $SIG{'__WARN__'} = 'Emacs::SIG__WARN__';
+
     tie (%ENV, 'Emacs::ENV');
     tie (%SIG, 'Emacs::SIG');
+
+    if (! defined ($real_pid)) {
+	$real_pid = $$;
+    }
+    tie ($$, 'Emacs::PID');
+
     $stuff_tied = 1;
 }
 
 sub cleanup {
     return if ! $stuff_tied;
+
+    untie ($$);
     untie (%SIG) if ref (tied (%SIG)) eq 'Emacs::SIG';
     untie (%ENV) if ref (tied (%ENV)) eq 'Emacs::ENV';
-    $SIG{'__WARN__'} = $old_warner if $SIG{'__WARN__'} eq 'Emacs::do_warn';
+
+    $SIG{'__WARN__'} = $old_warner if $SIG{'__WARN__'} eq 'Emacs::SIG__WARN__';
+
     untie (*STDERR) if ref (tied (*STDERR)) eq 'Emacs::Minibuffer';
     untie (*STDOUT) if ref (tied (*STDOUT)) eq 'Emacs::Stream';
     untie (*STDIN) if ref (tied (*STDIN)) eq 'Emacs::Minibuffer';
+
     $stuff_tied = 0;
 }
 
@@ -75,7 +98,7 @@ sub main {
     }
 }
 
-sub do_warn {
+sub SIG__WARN__ {
     my $msg = shift;
     chomp $msg;
     print STDERR $msg;
@@ -84,9 +107,10 @@ sub do_warn {
 sub exit {
     my ($status) = @_;
 
-    # XXX Should detect whether Emacs is running.
     local $SIG{'__WARN__'} = 'DEFAULT';
-    eval { &kill_emacs ($status); };
+    if ($Emacs::current) {
+	&Emacs::Lisp::kill_emacs ($status);
+    }
     CORE::exit ($status);
 }
 
@@ -191,9 +215,8 @@ sub TIEHASH {
     return (bless (\ do { my $x }, $_[0]));
 }
 
-# XXX Should map USR1 and USR2 to the Emacs 20.5 support.
 sub signal_unsettable {
-    return $_[0] !~ /^__/;
+    return ($_[0] !~ m/^__/ && $_[0] !~ m/^USR[12]$/);
 }
 
 sub FETCH {
@@ -209,6 +232,29 @@ sub FETCH {
 sub STORE {
     my ($self, $sig, $handler) = @_;
 
+    if ($sig =~ m/^USR([12])$/) {
+	no strict 'refs';
+	my $key = \ [\*{"::usr${1}_signal"}];
+	if (! defined ($handler)
+	    || $handler eq 'DEFAULT'
+	    || $handler eq 'IGNORE'
+	    || $handler eq 'EMACS')
+	{
+	    Emacs::Lisp::global_unset_key ($key);
+	}
+	else {
+	    # In Emacs, SIGUSR1 and SIGUSR2 are treated as keystrokes.
+	    # Keys can be bound to commands, but not just ordinary
+	    # functions.  Hence, "interactive".
+	    $handler = Emacs::Lisp::Opaque->new ($handler)
+		if ref ($handler);
+	    $handler = [\*::lambda, undef, [\*::interactive],
+			[\*::perl_call, $handler]];
+	    Emacs::Lisp::global_set_key ($key, $handler);
+	}
+	return ($handler);
+    }
+
     if (signal_unsettable ($sig)) {
 	return if $handler eq 'EMACS';
 	die ("Can't set signals under Emacs");
@@ -216,7 +262,7 @@ sub STORE {
     { local $^W = 0; untie (%SIG); }
     $SIG{$sig} = $handler;
     tie (%SIG, 'Emacs::SIG');
-    return $handler;
+    return ($handler);
 }
 
 sub DELETE {
@@ -241,12 +287,18 @@ sub EXISTS {
 sub CLEAR {}
 
 sub FIRSTKEY {
-    die "Can't iterate signals under Emacs";
+    die "Can't iterate over signals under Emacs";
 }
 
 sub NEXTKEY {
-    die "Can't iterate signals under Emacs";
+    die "Can't iterate over signals under Emacs";
 }
+
+package Emacs::PID;
+
+sub TIESCALAR { my ($x); return (bless (\$x, $_[0])); }
+sub FETCH { return (Emacs::Lisp::emacs_pid ()); }
+sub STORE { Carp::croak ("Can't change the process ID under Emacs"); }
 
 1;
 __END__

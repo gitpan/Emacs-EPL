@@ -1,4 +1,6 @@
 lib/Emacs/EPL.pm
+lib/Emacs/EPL/Debug.pm
+lib/Emacs/Forward.pm
 lib/Emacs/Lisp.pm
 lib/Emacs.pm
 t/00_boot.t

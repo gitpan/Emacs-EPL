@@ -131,9 +131,9 @@ END {
     eval {&perl_destruct};
 
     # FIXME:  Weird.  This works too, but $@ is reported as empty
-    #report (($@ =~ /xxxtop-level/), $@);
-    #report (($@ =~ /top-level/), $@);
-    my $x = $@ =~ /Attempt to destroy a top-level Perl/;
+    #report (($@ =~ /xxxparent/), $@);
+    #report (($@ =~ /parent/), $@);
+    my $x = $@ =~ m/parent/;
     report ($x, $@);
     &garbage_collect;
     $? = 0;

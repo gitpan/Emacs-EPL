@@ -25,7 +25,7 @@
 #   Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston,
 #   MA 02111-1307  USA
 
-VERSION = 1.02
+VERSION = 1.03
 AUTHOR_VERSION = $(shell perl Makefile.PL print_package_version)
 MAINTAINER = John Tobey <jtobey@john-edwin-tobey.org>
 PACKAGE = epl
@@ -59,7 +59,7 @@ doc/epl.info: $(TEXI_FILES)
 doc/version.texi: Makefile.PL lisp/epl.el
 	perl Makefile.PL write_version_texi
 
-srckit: srckit-std
+srckit: doc/version.texi srckit-std
 
 binkit: binkit-common
 

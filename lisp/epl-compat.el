@@ -36,7 +36,7 @@
 
 (defun epl-mvwht () (make-value-weak-hashtable 10 'eq))
 
-(defun epl-mhtwv () (make-hash-table :test 'eq :weakness 'value))
+(defun epl-mhtwv () (make-hash-table ':test 'eq ':weakness 'value))
 
 (defalias 'epl-make-refs-table
   (if (fboundp 'make-value-weak-hashtable)
@@ -105,7 +105,38 @@ See also `epl-gc-detection-method'.")
 (defun epl-make-refs-hash-table ()
   (if (fboundp 'make-value-weak-hashtable)
       (make-value-weak-hashtable 20 'eq)
-    (make-hash-table :test 'eq :size 20 :weakness 'value)))
+    (make-hash-table ':test 'eq ':size 20 ':weakness 'value)))
+
+(defun epl-make-cookies-hash-table ()
+  (if (fboundp 'make-key-weak-hashtable)
+      (make-key-weak-hashtable 20 'eq)
+    (make-hash-table ':test 'eq ':size 20 ':weakness 'key)))
+
+;; For GNU Emacs 19.34.
+(or (fboundp 'with-current-buffer)
+    (defmacro with-current-buffer (buffer &rest body)
+      `(let ((epl-current-buffer (current-buffer)))
+	 (unwind-protect
+	     (progn
+	       (set-buffer ,buffer)
+	       . ,body)
+	   (set-buffer epl-current-buffer)))))
+
+;; For GNU Emacs 19.34.
+;; XXX untested.
+(or (fboundp 'with-temp-buffer)
+    (defmacro with-temp-buffer (buffer &rest body)
+      `(let ((epl-current-buffer (generate-new-buffer "*epl-temp*")))
+	 (unwind-protect
+	     (progn
+	       (set-buffer ,buffer)
+	       . ,body)
+	   (kill-buffer epl-current-buffer)))))
+
+;; For GNU Emacs 19.34.
+(or (fboundp 'char-before)
+    (defsubst char-before (&optional pos)
+      (char-after (1- (or pos (point))))))
 
 
 (provide 'epl-compat)

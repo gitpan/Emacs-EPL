@@ -21,22 +21,23 @@
 
 (require 'epl)
 
-(let* ((epl-interp (make-epl-interp :in nil :out nil :depth 0))
-       (perl-interpreter epl-interp)
-       (standard-input t))
-  (epl-puthash t epl-interp epl-interp-map)
-  ;; Check version
-  (if command-line-args-left
-      (let ((me (format "%d.%d" epl-major-version epl-minor-version))
-	    (you (car command-line-args-left)))
-	(if (string= you me)
-	    (setq command-line-args-left (cdr command-line-args-left))
-	  (epl-send-message "&cb_raise("
-			    (format "Version mismatch: %s versus epl.el %s"
-				    you me) ")"))))
-  ;; Answer the START and loop until told to exit.
-  (epl-debug "Server start, pid " (emacs-pid) "\n")
-  (epl-send-and-receive "&cb_return()")
-  (epl-debug "Server stop, pid " (emacs-pid) "\n"))
+(setq epl-interp
+      (let ((process-connection-type nil))  ; Use a pipe.
+	(make-epl-interp ':out (apply 'start-process "perl" nil
+				      (cdr command-line-args-left))
+			 ':child-p nil))
+      perl-interpreter epl-interp)
 
-(kill-emacs)
+;; Check version
+(let ((me (format "%d.%d" epl-major-version epl-minor-version))
+      (you (car command-line-args-left)))
+  (if (not (string= you me))
+      (epl-send-message "&cb_raise("
+			(format "Version mismatch: %s versus epl.el %s"
+				you me) ")")))
+
+(setq command-line-args-left nil)
+
+;; Answer the START.
+(epl-debug "Server start, pid " (emacs-pid) "\n")
+(epl-send-and-receive "&cb_return()")

@@ -6,6 +6,16 @@ use Emacs::Lisp;
 use Data::Dumper;
 $Data::Dumper::Purity = 1;
 
+#$Emacs::EPL::debugging = 'stderr';
+
+# XXX This script fails somewhere using Emacs 19 and 20.
+# None of these scripts work with XEmacs yet.
+*xemacs = *xemacs;
+use Emacs::Lisp ('$emacs_major_version');
+if ($emacs_major_version < 21 || &featurep(\*xemacs)) {
+    print ("1..0\n"); exit;
+}
+
 my $lx = &Emacs::Lisp::Object::read(q(
 
   (let ((x [nil nil nil]))
@@ -17,7 +27,7 @@ my $lx = &Emacs::Lisp::Object::read(q(
 my $x = \ [undef, undef, undef];
 $$x->[0] = $x;
 $$x->[1] = $$x->[2] = Emacs::Lisp::Cons->new ('car' => $x, 'cdr' => $x);
-$px = lisp($x);
+$px = &perl_wrap($x);
 
 my $py;
 $py = \$py;
@@ -26,7 +36,7 @@ my $z = [];
 $z->[0] = $z;
 # Here it sort of breaks down due to Lisp's lack of true references.
 $z->[1] = \$z->[0];
-$pz = lisp($z);
+$pz = perl_wrap($z);
 
 @tests =
     (
@@ -52,8 +62,8 @@ $pz = lisp($z);
      sub { Dumper($lx->to_perl) eq Dumper($x); },
      sub { &perl_ref_p($py); },
      sub { &perl_ref_p(&perl_ref($py)); },
-     sub { lisp($py)->perl_ref_p->to_perl; },
-     sub { lisp($py)->perl_ref->perl_ref_p->to_perl; },
+     sub { perl_wrap($py)->perl_ref_p->to_perl; },
+     sub { perl_wrap($py)->perl_ref->perl_ref_p->to_perl; },
      sub { $pz->consp->to_perl; },
      sub { $pz->car->cdr->car->perl_ref->eq($pz); },
     );

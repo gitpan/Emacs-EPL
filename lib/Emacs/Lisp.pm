@@ -105,7 +105,6 @@ sub AUTOLOAD {
 sub can { &UNIVERSAL::can || &$can (__PACKAGE__, $_[1]) }
 
 sub is_nil	($) { defined $_[0]->null->to_perl }
-sub new		($$) { &to_lisp ($_[1]) }
 
 
 package Emacs::Lisp::Variable;
@@ -490,14 +489,6 @@ sub _make_arglist {
     return ([map {\*$_} @arglist], [map {\*$_} @applylist], $ends_in_list);
 }
 
-# Ensure that a value is not changed on its way to Lisp.
-# This is used in inhibiting coderef-to-lambda conversion.
-# XXX coderef-to-lambda is unnecessary in Perlmacs.
-sub _opaque {
-    my $val = shift;
-    return bless \$val, 'Emacs::Lisp::Opaque';
-}
-
 sub defun ($$;$$) {
     my $sym = shift;
     my ($next, $docstring, $interactive, $body, @form);
@@ -531,7 +522,7 @@ sub defun ($$;$$) {
 	$interactive = $$interactive;
 	if (ref ($interactive) eq 'CODE') {
 	    $interactive = [\*::perl_call,
-			    _opaque ($interactive),
+			    wrap ($interactive),
 			    \*::list_context];
 	}
 	if (defined ($interactive)) {
@@ -551,30 +542,30 @@ sub defun ($$;$$) {
 
 sub catch ($&) {
     return &eval ([\*::catch, [\*::quote, $_[0]],
-		   [\*::perl_call, _opaque $_[1]]]);
+		   [\*::perl_call, wrap ($_[1])]]);
 }
 
 sub save_excursion (&) {
-    return &eval ([\*::save_excursion, [\*::perl_call, _opaque $_[0]]]);
+    return &eval ([\*::save_excursion, [\*::perl_call, wrap ($_[0])]]);
 }
 
 sub save_current_buffer (&) {
-    return &eval ([\*::save_current_buffer, [\*::perl_call, _opaque $_[0]]]);
+    return &eval ([\*::save_current_buffer, [\*::perl_call, wrap ($_[0])]]);
 }
 
 sub save_restriction (&) {
-    return &eval ([\*::save_restriction, [\*::perl_call, _opaque $_[0]]]);
+    return &eval ([\*::save_restriction, [\*::perl_call, wrap ($_[0])]]);
 }
 
 sub track_mouse (&) {
-    return &eval ([\*::track_mouse, [\*::perl_call, _opaque $_[0]]]);
+    return &eval ([\*::track_mouse, [\*::perl_call, wrap ($_[0])]]);
 }
 
 sub unwind_protect {
     my ($body, $handler) = @_;
 
     for ($body, $handler) {
-	$_ = _opaque $_ if ref eq 'CODE';
+	$_ = wrap ($_) if ref eq 'CODE';
     }
     return (&eval ([\*::unwind_protect,
 		    [\*::perl_call, $body],
@@ -646,7 +637,8 @@ The string C<"hello!"> should appear in your scratch buffer.  The Perl
 sub C<&insert> has called the Emacs Lisp C<insert> function, which
 inserts its string argument into the current buffer at point.
 
-Paste this text into a buffer, select it, and type C<C-x p r>:
+Paste this text into a buffer, select it, and type C<M-x
+perl-eval-region RET>:
 
     sub doit { &message("Cool, huh?"); }
     defun (\*perltest, interactive, \&doit);
@@ -1167,7 +1159,7 @@ me.
 
 =over 4
 
-=item * Emacs::Lisp doesn't work outside of XEmacs or GNU Emacs 20.
+=item * Emacs::Lisp doesn't work outside of XEmacs.
 
 If a Perl program not under the control of an Emacs process uses
 Emacs::Lisp functions, Emacs::Lisp tries to run Emacs in batch mode.
@@ -1183,6 +1175,13 @@ would be ptys (Emacs loves them, I'm not overly fond) and an
 intermediary perl process that talks to the original process over a
 named pipe.
 
+=item * Non-robust with respect to subprocess Perl dying.
+
+Perl dies because of (e.g.) version mismatch between epl.el and
+EPL.pm.  Then you can't exit Emacs, because it tries to tell Perl to
+exit and gives you an error "Process perl not running".  Very
+unfriendly.
+
 =item * Within Lisp code, everything defaults to package `main'.
 
 It would perhaps be best to give the Lisp evaluation environment the
@@ -1197,7 +1196,7 @@ How can we convert them to and from Perl?
 Strings are copied more than they absolutely need to be.  Even if they
 weren't, it's bound to be a lot slower than Perlmacs.
 
-=item * Non-string hash keys are converted wrong.
+=item * Lisp hash tables are not deep-copied.
 
 What to do?  Produce tied hashes whose keys can be any Lisp object?
 Wrap hashes that contain non-string keys?
@@ -1266,9 +1265,11 @@ does not yet know how to use them.
 
 =over 4
 
-=item * Transport layer that will allow interactive slave Emacs
-
 =item * Finish texinfo doc
+
+=item * Delete/revise obsolete portions of POD
+
+=item * Figure out how to handle hash tables
 
 =item * Garbage collection for XEmacs
 
@@ -1278,7 +1279,9 @@ does not yet know how to use them.
 
 =item * Formal rules for scalar type conversion
 
-=item * Document and regression-test multiple Emacses under Perl
+=item * Regression-test multiple Emacses under Perl
+
+=item * Regression-test any Perls under Emacs
 
 =item * Steal from IPC::Open2
 

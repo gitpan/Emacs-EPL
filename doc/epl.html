@@ -1,30 +1,31 @@
 <html lang="en"><head>
-<title>EPL 0.6 Reference Manual</title>
+<title>EPL 0.7 Reference Manual</title>
 <meta http-equiv="Content-Type" content="text/html">
-<meta name=description content="EPL 0.6 Reference Manual">
+<meta name=description content="EPL 0.7 Reference Manual">
 <meta name=generator content="makeinfo 4.0">
 <link href="http://texinfo.org/" rel=generator-home>
 </head><body>
 
 <p><hr>
 Node:<a name="Top">Top</a>,
-Next:<a rel=next href="#Introduction">Introduction</a>,
+Next:<a rel=next href="#Preface">Preface</a>,
 Up:<a rel=up href="#(dir)">(dir)</a>
 <br>
 
 <h1>EPL</h1>
 
-<p>This Info file contains edition 0.1 of the EPL
-Reference Manual, corresponding to EPL version 0.6.
+<p>This is edition 0.2 of the EPL Reference Manual,
+corresponding to EPL version 0.7.
 
 <p>EPL (Emacs Perl) is a library of Lisp functions and Perl modules that
 let you write Emacs extensions in Perl.
 
 <ul>
-<li><a href="#Introduction">Introduction</a>:                 Quick example and introduction. 
+<li><a href="#Preface">Preface</a>:                      Why I'm here. 
+<li><a href="#Introduction">Introduction</a>:                 Beginning with an example. 
 <li><a href="#Features">Features</a>:                     How Perl looks to Lisp, how Lisp looks to Perl. 
-<li><a href="#Environment">Environment</a>:                  Changing the default configuration. 
-<li><a href="#Protocol">Protocol</a>:                     If you <em>really</em> want to see what happens.
+<li><a href="#Configuration">Configuration</a>:                Changing the defaults. 
+<li><a href="#Internals">Internals</a>:                    What happens under the hood.
 
 <p>Appendices
 
@@ -43,36 +44,89 @@ let you write Emacs extensions in Perl.
 <p>How Language Features Correspond
 
 </p><li><a href="#Data%20Conversion">Data Conversion</a>:              Working with each other's data types. 
-<li><a href="#Evaluation">Evaluation</a>:                   Loading code, <code>perl-eval</code>. 
-<li><a href="#Functions">Functions</a>:                    Calling each other's functions, <code>defun</code>. 
+<li><a href="#Functions">Functions</a>:                    Transfering program control. 
 <li><a href="#Control%20Structures">Control Structures</a>:           Exceptions; <code>throw</code>, <code>signal</code>, <code>die</code>. 
 <li><a href="#Input%2fOutput">Input/Output</a>:                 Perl's primitives are redefined in Emacs. 
 <li><a href="#Caveats">Caveats</a>:                      It's not always a happy marriage.
 
-<p>Startup and Environment
+<p>Configuration
 
-</p><li><a href="#The%20Easy%20Way">The Easy Way</a>:                 We like the defaults. 
+</p><li><a href="#Installation">Installation</a>:                 Lisp files, Perl modules, documentation. 
+<li><a href="#The%20Easy%20Way">The Easy Way</a>:                 We like the defaults. 
 <li><a href="#Starting%20a%20Perl%20Process%20in%20Emacs">Starting a Perl Process in Emacs</a>:    <code>make-perl-interpreter</code>. 
-<li><a href="#Starting%20an%20Emacs%20Process%20in%20Perl">Starting an Emacs Process in Perl</a>:   <code>use Emacs::Lisp;</code>.
+<li><a href="#Starting%20an%20Emacs%20Process%20in%20Perl">Starting an Emacs Process in Perl</a>:   <code>use Emacs;</code>.
 
-<p>Protocol
+<p>Internals
 
 </p><li><a href="#Debugging%20Options">Debugging Options</a>:            Dumping traffic to stderr or a buffer. 
 <li><a href="#Transport%20Layer">Transport Layer</a>:              Media of interprocess communication. 
 <li><a href="#Message%20Types">Message Types</a>:                What interpreters can say to each other. 
 <li><a href="#State%20Transitions">State Transitions</a>:            The message stream grammar. 
-<li><a href="#Implementation">Implementation</a>:               Current EPL wire protocol (<strong>subject to change</strong>).
+<li><a href="#Protocol">Protocol</a>:                     Current EPL protocol (<strong>subject to change</strong>).
 
 </ul>
 
 <p><hr>
-Node:<a name="Introduction">Introduction</a>,
-Next:<a rel=next href="#Features">Features</a>,
+Node:<a name="Preface">Preface</a>,
+Next:<a rel=next href="#Introduction">Introduction</a>,
 Previous:<a rel=previous href="#Top">Top</a>,
 Up:<a rel=up href="#Top">Top</a>
 <br>
 
+<h1>Preface</h1>
+
+<p>Like a lot of people, I learned Perl because of the Web.  I came to
+GNU from a Microsoft background early in 1996, when Microsoft had only
+begun to realize that the Internet was hot.  I was deeply infused with
+Web hype, willing to try something different, and aware that the Web
+ran on Unix and Perl.
+
+<p>I came to Emacs because of genetic predisposition.  A tightly
+integrated, yet versatile, complex system with endless opportunities
+for learning and automation helps reduce my cholesterol and, I think,
+aids respiration and digestion.  It had all the good features of
+Microsoft Office, without all the headaches and nausea.
+
+<p>Well, it had <em>almost</em> all the good features.
+
+<p>Emacs is an oasis of integration in the chaotic and disparate realm of
+Linux and Unix.  (I later learned that the Unix kernel is a thing of
+some elegance, but at the level of <code>/etc/resolv.conf</code>,
+<small>X11R6</small>, and <code>~/.fvwmrc</code>, there was little cohesion.)  As
+I entered this realm, it irked me that I had to learn <em>two</em>
+scripting languages to do what I wanted, whereas Visual Basic, clunky
+as it is, does everything on Windows.
+
+<p>Speaking of that other--umm--language, Visual Basic shares an
+important feature with Perl: It is for ordinary people.
+
+<p>Now, I am very glad that Emacs lets you do just about anything with
+Elisp (such as write EPL).  But my conceptual mapping from Windows
+onto Unix paired Visual Basic with Perl, not Lisp, as the general
+workhorse get-it-done tool.  It seemed to me not right that the
+standard, full-featured editor on my new system could not understand
+the standard, full-featured scripting language.  With EPL--Emacs
+PerL, or Emacs-Perl-Lisp--I hope to rectify the situation.
+
+<p><hr>
+Node:<a name="Introduction">Introduction</a>,
+Next:<a rel=next href="#Features">Features</a>,
+Previous:<a rel=previous href="#Preface">Preface</a>,
+Up:<a rel=up href="#Top">Top</a>
+<br>
+
 <h1>Introduction</h1>
+
+<p>EPL is an extension for <a href="http://www.gnu.org/software/emacs/">GNU Emacs</a> and <a href="http://www.xemacs.org">XEmacs</a> that lets you write
+commands in Perl.  It is also a programming interface for Elisp
+(see <a href="#Emacs%20Lisp">Emacs Lisp</a>) programs to use Perl features and an interface
+for Perl to use Emacs.
+
+<p>This document assumes knowledge of Emacs terms such as "the
+minibuffer" and "<kbd>M-x</kbd>" (see <a href="emacs.html#Running%20Commands%20by%20Name">Top</a>).  It assumes knowledge of Perl
+references and nested data structures
+(<a href="http://theoryx5.uwinnipeg.ca/CPAN/perl/pod/perlref.html">perlref(1)</a>), and packages and modules
+(<a href="http://theoryx5.uwinnipeg.ca/CPAN/perl/pod/perlmod.html">perlmod(1)</a>).
 
 <ul>
 <li><a href="#Perl%20Example">Perl Example</a>:                 An example: Find files containing regex. 
@@ -92,9 +146,9 @@ Up:<a rel=up href="#Introduction">Introduction</a>
 <p>Let's illustrate EPL with an example.  Suppose you often want to edit
 many files in the same directory based on some text that they contain. 
 You want a command that will look for a specified regular expression
-in each file, and if found, open the file in a buffer.  You prefer to
-use Perl regular expressions, and you are not interested in files that
-Perl considers to be binary.
+in each file, and if found, open the file in a buffer.  You prefer
+Perl regular expressions to Emacs ones, and you are not interested in
+files that Perl considers to be binary.
 
 <p>Here is some Emacs Perl code that will do it:
 
@@ -103,6 +157,9 @@ use IO::File;
 
 sub find_my_files ($$) {
     my ($dirname, $regex) = @_;
+
+    # Convert "~" to home dir.
+    $dirname = &amp;expand_file_name ($dirname);
 
     my $dh = IO::Dir-&gt;new ($dirname)
         or die "$dirname: $!";
@@ -140,11 +197,11 @@ defun (\*find_files_containing_regex,
 (see <a href="#Evaluation">Evaluation</a>) or from <code>~/.emacs</code>, and use it as <kbd>M-x
 find-files-containing-regex</kbd>.
 
-<p>The function prompts for a directory name (with completion and
-history) and an arbitrary string (regex).  It signals an error if it
-can't read the directory, and otherwise summarizes the results in the
-minibuffer.  You can access its documentation just like that of any
-Emacs command, using <kbd>C-h f find-files-containing-regex</kbd>.
+<p>The command prompts for a directory name (with &lt;TAB&gt;-completion
+and history) and an arbitrary string (regex).  It signals an error if
+it can't read the directory, and otherwise summarizes the results in
+the minibuffer.  You can access its documentation just like that of
+any Emacs command, using <kbd>C-h f find-files-containing-regex</kbd>.
 
 <p><hr>
 Node:<a name="History">History</a>,
@@ -191,9 +248,10 @@ extensions.
 <p>Of course, those documents assume that extensions use Lisp.  Still,
 they are an invaluable resource, and any programmer with a general
 understanding of functions and variables can make good use of them. 
-This manual makes frequent reference to <a href="elisp.html#Emacs%20Lisp"></a>.  If you don't have it, go get it!  It
-should be available wherever you got Emacs or from the
-<a href="http://www.gnu.org/doc/doc.html">Free Software Foundation</a>.
+This manual makes frequent reference to the
+<a href="http://www.gnu.org/manual/elisp/">GNU Emacs Lisp Reference Manual</a>. 
+If you don't have it, go get it!  It should be available wherever you
+got Emacs or from the <a href="http://www.gnu.org/doc/doc.html">Free Software Foundation</a>.
 
 <p>Who knows?  You may fall in love with Lisp.
 
@@ -207,7 +265,7 @@ Up:<a rel=up href="#Introduction">Introduction</a>
 
 <p><hr>
 Node:<a name="Features">Features</a>,
-Next:<a rel=next href="#Environment">Environment</a>,
+Next:<a rel=next href="#Configuration">Configuration</a>,
 Previous:<a rel=previous href="#Introduction">Introduction</a>,
 Up:<a rel=up href="#Top">Top</a>
 <br>
@@ -222,7 +280,6 @@ hard things possible.
 
 <ul>
 <li><a href="#Data%20Conversion">Data Conversion</a>:              Working with each other's data types. 
-<li><a href="#Evaluation">Evaluation</a>:                   Loading code, <code>perl-eval</code>. 
 <li><a href="#Functions">Functions</a>:                    Calling each other's functions, <code>defun</code>. 
 <li><a href="#Control%20Structures">Control Structures</a>:           Exceptions; <code>throw</code>, <code>signal</code>, <code>die</code>. 
 <li><a href="#Input%2fOutput">Input/Output</a>:                 Perl's primitives are redefined in Emacs. 
@@ -231,18 +288,29 @@ hard things possible.
 
 <p><hr>
 Node:<a name="Data%20Conversion">Data Conversion</a>,
-Next:<a rel=next href="#Evaluation">Evaluation</a>,
+Next:<a rel=next href="#Functions">Functions</a>,
 Up:<a rel=up href="#Features">Features</a>
 <br>
 
 <h2>Data Conversion</h2>
 
-<p>When Perl calls a Lisp function, its arguments are converted to Lisp
-objects, and the returned object is converted to a Perl value. 
-Likewise, when Lisp calls Perl, the arguments are converted from Lisp
-to Perl and the return values are converted to Lisp.
+<p>EPL provides essentially two mechanisms to transfer data between
+languages--as function arguments and return values.  In both cases,
+data may be passed either by value or by reference.  The default is by
+value, since references incur overhead (see <a href="#References%20Incur%20Overhead">References Incur Overhead</a>).
 
-<p>See <a href="elisp.html#Lisp%20Data%20Types">Lisp Data Types</a>.
+<p>In EPL, <dfn>by value</dfn> means recursively (or "deeply") copied.  That
+is, containers in the originating language are converted to analogous
+containers in the destination language, and any contained elements not
+explicitly marked as pass-by-reference are likewise converted.  This
+allows the recipient to examine a structure using its built-in
+accessors, but changes will not apply to the original.  Also, language
+peculiarities result in information loss during some conversions, so
+pass-by-value is not completely reversible (see <a href="#Conversion%20Is%20Imperfect">Conversion Is Imperfect</a>).
+
+<p>This section describes the conversions that apply to each language's
+scalar and container types.  For a complete description of Lisp types,
+see <a href="elisp.html#Lisp%20Data%20Types">Lisp Data Types</a>.
 
 <ul>
 <li><a href="#Scalars">Scalars</a>:                      Lisp has three scalar types. 
@@ -253,9 +321,9 @@ to Perl and the return values are converted to Lisp.
 <li><a href="#Conses">Conses</a>:                       The <code>Emacs::Lisp::Cons</code> type. 
 <li><a href="#Scalar%20References">Scalar References</a>:            The <code>perl-ref</code> type. 
 <li><a href="#Code%20References">Code References</a>:              <code>\&amp;frob</code> is a lambda expression. 
-<li><a href="#Deep%20Copying">Deep Copying</a>:                 Conversion uses deep copying by default. 
-<li><a href="#Opaque%20Objects">Opaque Objects</a>:               The <code>Emacs::Lisp::Object</code> and
-                                  <code>perl-value</code> types. 
+<li><a href="#Hash%20Tables">Hash Tables</a>:                  Not yet implemented. 
+<li><a href="#Blessed%20References">Blessed References</a>:           Not yet implemented. 
+<li><a href="#Emacs%20Types">Emacs Types</a>:                  Not yet implemented. 
 </ul>
 
 <p><hr>
@@ -325,7 +393,6 @@ Up:<a rel=up href="#Data%20Conversion">Data Conversion</a>
 <p>Lists are a central data structure in Lisp.  To make it as easy as
 possible to pass lists to Lisp functions that require them, Perl array
 references are converted Lisp lists.  For example, the Perl expression
-such as
 
 <pre>["x", ["y", 1]]
 </pre>
@@ -346,7 +413,7 @@ Up:<a rel=up href="#Data%20Conversion">Data Conversion</a>
 
 <h3>Vectors</h3>
 
-<p>Adding <code>\</code> to an arrayref makea it an arrayref ref, which EPL
+<p>Adding <code>\</code> to an arrayref makes it an arrayref ref, which EPL
 treats as a vector in Lisp.  For example, Perl <code>\[1, 2, []]</code>
 becomes Lisp <code>[1 2 nil]</code>.
 
@@ -362,7 +429,7 @@ Up:<a rel=up href="#Data%20Conversion">Data Conversion</a>
 <p>Conses that are not lists become Emacs::Lisp::Cons objects.
 
 <p><strong>Compatibility note:</strong>  In Perlmacs, such conses become opaque
-objects (see <a href="#Opaque%20Objects">Opaque Objects</a>).
+objects (see <a href="#Pass-by-Reference">Pass-by-Reference</a>).
 
 <pre>$x = &amp;cons("left", "right");
 print ref($x);                # "Emacs::Lisp::Cons"
@@ -386,7 +453,7 @@ Up:<a rel=up href="#Data%20Conversion">Data Conversion</a>
 
 <p><hr>
 Node:<a name="Code%20References">Code References</a>,
-Next:<a rel=next href="#Deep%20Copying">Deep Copying</a>,
+Next:<a rel=next href="#Hash%20Tables">Hash Tables</a>,
 Previous:<a rel=previous href="#Scalar%20References">Scalar References</a>,
 Up:<a rel=up href="#Data%20Conversion">Data Conversion</a>
 <br>
@@ -394,98 +461,58 @@ Up:<a rel=up href="#Data%20Conversion">Data Conversion</a>
 <h3>Code References</h3>
 
 <p><hr>
-Node:<a name="Deep%20Copying">Deep Copying</a>,
-Next:<a rel=next href="#Opaque%20Objects">Opaque Objects</a>,
+Node:<a name="Hash%20Tables">Hash Tables</a>,
+Next:<a rel=next href="#Blessed%20References">Blessed References</a>,
 Previous:<a rel=previous href="#Code%20References">Code References</a>,
 Up:<a rel=up href="#Data%20Conversion">Data Conversion</a>
 <br>
 
-<h3>Deep Copying</h3>
+<h3>Hash Tables</h3>
 
-<p>Conversion of lists and vectors to arrayrefs and arrayref refs is
-recursive by default.  Changes made by Lisp to a list will not affect
-the Perl array of which it is a copy, nor will changes to a Perl array
-affect a Lisp list.
+<p>The issue with hash tables is that Perl's built-in ones permit only
+string keys.  Right now, hash tables are passed by reference
+(see <a href="#Pass-by-Reference">Pass-by-Reference</a>).
 
 <p><hr>
-Node:<a name="Opaque%20Objects">Opaque Objects</a>,
-Previous:<a rel=previous href="#Deep%20Copying">Deep Copying</a>,
+Node:<a name="Blessed%20References">Blessed References</a>,
+Next:<a rel=next href="#Emacs%20Types">Emacs Types</a>,
+Previous:<a rel=previous href="#Hash%20Tables">Hash Tables</a>,
 Up:<a rel=up href="#Data%20Conversion">Data Conversion</a>
 <br>
 
-<h3>Opaque Objects</h3>
-
-<p>There are ways to make "shallow" copies.
-
-<p>A shallow copy simply wraps a Perl scalar in a Lisp object or vice
-versa.  Wrapped Perl values appear as a Lisp objects of type
-<code>perl-value</code>.  Wrapped Lisp values appear in Perl as objects of
-class <code>Emacs::Lisp::Object</code>.  See <a href="#Caveats">Caveats</a>, for issues relating
-to wrapped data.
-
-<p>In Perl, the <code>lisp</code> function wraps its argument in a Lisp object. 
-This allows Perl data such as arrays to be passed by reference to Lisp
-functions.  Another way Lisp can obtain references to Perl data is by
-using <code>perl-eval-raw</code> or <code>perl-call-raw</code>.  Lisp can tell
-whether an object refers to Perl data by using the <code>perl-value-p</code>
-function.
-
-<p>Of course, <code>lisp</code> is a Perl function, so the value it returns is
-really its argument wrapped in a Lisp object wrapped in a Perl object. 
-But when you pass this object to Lisp as an argument or function
-return value, Lisp gets a reference to the original object, and no
-automatic conversion occurs.  Lisp may explicitly convert it at any
-time using the <code>perl-to-lisp</code> function, and any changes made by
-Perl will be visible at the time of conversion.
-
-<p>The Lisp function <code>perl-wrap</code> is the counterpart of Perl's
-<code>lisp</code> function, and the <code>Emacs::Lisp::Object</code> package
-provides the equivalent of <code>perl-call-raw</code>.  The functions of
-package <code>Emacs::Lisp</code> return deep copies of Lisp function return
-values (see see <a href="#Functions">Functions</a>).  However, the corresponding
-<code>Emacs::Lisp::Object</code> functions return references to live Lisp
-objects.
-
-<p>Since a wrapped Lisp object appears in Perl as
-<code>Emacs::Lisp::Object</code> a blessed reference, if follows that it can
-be used with method syntax to invoke a function and pass itself as the
-first argument.  Thus, supposing <code>v</code> is a vector of conses and
-<code>$v</code> is its wrapper, this Perl code
-
-<pre>$v-&gt;aref(3)-&gt;setcdr(t);
-</pre>
-has the effect of the following Lisp:
-<pre>(setcdr (aref v 3) t)
-</pre>
-
-<p>An Emacs::Lisp::Object's <code>to_perl</code> method performs a deep copy
-and is the counterpart of <code>perl-to-lisp</code>.
-
-<p>Lisp functions called through package Emacs::Lisp convert their return
-values using deep copying.  The same functions are accessible through
-Emacs::Lisp::Object, which does shallow conversion and always returns
-an Emacs::Lisp::Object object.
-
-<p>These examples show how the data wrapping functions work:
-
-<pre>$x = lisp [1, 2, 3];
-print ref($x);           # "Emacs::Lisp::Object"
-print ref($x-&gt;to_perl);  # "ARRAY"
-print @{&amp;list(2, 3)};    # "23"
-
-$x = Emacs::Lisp::Object::list(2, 3);
-print ref($x);           # "Emacs::Lisp::Object"
-print @{$x-&gt;to_perl};    # "23"
-</pre>
+<h3>Blessed References</h3>
 
 <p><hr>
-Node:<a name="Evaluation">Evaluation</a>,
-Next:<a rel=next href="#Functions">Functions</a>,
+Node:<a name="Emacs%20Types">Emacs Types</a>,
+Previous:<a rel=previous href="#Blessed%20References">Blessed References</a>,
+Up:<a rel=up href="#Data%20Conversion">Data Conversion</a>
+<br>
+
+<h3>Emacs Types</h3>
+
+<p><hr>
+Node:<a name="Functions">Functions</a>,
+Next:<a rel=next href="#Control%20Structures">Control Structures</a>,
 Previous:<a rel=previous href="#Data%20Conversion">Data Conversion</a>,
 Up:<a rel=up href="#Features">Features</a>
 <br>
 
-<h2>Evaluation</h2>
+<h2>Functions</h2>
+
+<ul>
+<li><a href="#Evaluation">Evaluation</a>:                   <code>perl-eval</code>. 
+<li><a href="#Ordinary%20Functions">Ordinary Functions</a>:           <code>perl-call</code>, <code>use Emacs::Lisp;</code>. 
+<li><a href="#Pass-by-Reference">Pass-by-Reference</a>:            How to inhibit data conversion. 
+<li><a href="#Commands">Commands</a>:                     Extending Emacs without Lisp, <code>defun</code>. 
+</ul>
+
+<p><hr>
+Node:<a name="Evaluation">Evaluation</a>,
+Next:<a rel=next href="#Ordinary%20Functions">Ordinary Functions</a>,
+Up:<a rel=up href="#Functions">Functions</a>
+<br>
+
+<h3>Evaluation</h3>
 
 <p>
 <table width="100%">
@@ -535,13 +562,13 @@ that keeps a reference to a value in Perl.
 </TABLE>
 
 <p><hr>
-Node:<a name="Functions">Functions</a>,
-Next:<a rel=next href="#Control%20Structures">Control Structures</a>,
+Node:<a name="Ordinary%20Functions">Ordinary Functions</a>,
+Next:<a rel=next href="#Pass-by-Reference">Pass-by-Reference</a>,
 Previous:<a rel=previous href="#Evaluation">Evaluation</a>,
-Up:<a rel=up href="#Features">Features</a>
+Up:<a rel=up href="#Functions">Functions</a>
 <br>
 
-<h2>Functions</h2>
+<h3>Ordinary Functions</h3>
 
 <p>
 <table width="100%">
@@ -560,6 +587,91 @@ is not passed to the sub but affects the calling context as in
 <code>perl-eval</code>.  See <a href="#Evaluation">Evaluation</a>. 
 </TD></TR>
 </TABLE>
+
+<p><hr>
+Node:<a name="Pass-by-Reference">Pass-by-Reference</a>,
+Next:<a rel=next href="#Commands">Commands</a>,
+Previous:<a rel=previous href="#Ordinary%20Functions">Ordinary Functions</a>,
+Up:<a rel=up href="#Functions">Functions</a>
+<br>
+
+<h3>Pass-by-Reference</h3>
+
+<p>XXX Rewrite.
+
+<p>A <dfn>shallow copy</dfn> simply wraps a Perl scalar in a Lisp object or
+vice versa.  Wrapped Perl values appear as a Lisp objects of type
+<code>perl-value</code>.  Wrapped Lisp values appear in Perl as objects of
+class <code>Emacs::Lisp::Object</code>.  See <a href="#References%20Incur%20Overhead">References Incur Overhead</a>,
+for issues relating to wrapped data.
+
+<p>In Perl, the <code>wrap</code> function wraps its argument in a Lisp object. 
+This allows Perl data such as arrays to be passed by reference to Lisp
+functions.  Another way Lisp can obtain references to Perl data is by
+using <code>perl-eval-raw</code> or <code>perl-call-raw</code>.  Lisp can tell
+whether an object refers to Perl data by using the <code>perl-value-p</code>
+function.
+
+<p>Of course, <code>wrap</code> is a Perl function, so the value it returns is
+really its argument wrapped in a Lisp object wrapped in a Perl object. 
+But when you pass this object to Lisp as an argument or function
+return value, Lisp gets a reference to the original object, and no
+automatic conversion occurs.  Lisp may explicitly convert it at any
+time using the <code>perl-to-lisp</code> function, and any changes made by
+Perl will be visible at the time of conversion.
+
+<p>The Lisp function <code>perl-wrap</code> is the counterpart of Perl's
+<code>wrap</code> function, and the <code>Emacs::Lisp::Object</code> package
+provides the equivalent of <code>perl-call-raw</code>.  The functions of
+package <code>Emacs::Lisp</code> return deep copies of Lisp function return
+values (see see <a href="#Functions">Functions</a>).  However, the corresponding
+<code>Emacs::Lisp::Object</code> functions return references to live Lisp
+objects.
+
+<p>Since a wrapped Lisp object appears in Perl as an
+<code>Emacs::Lisp::Object</code> blessed reference, if follows that it can
+be used with method syntax to invoke a function and pass itself as the
+first argument.  Thus, supposing <code>v</code> is a vector of conses and
+<code>$v</code> is its wrapper, this Perl code
+
+<pre>$v-&gt;aref(3)-&gt;setcdr(t);
+</pre>
+has the effect of the following Lisp:
+<pre>(setcdr (aref v 3) t)
+</pre>
+
+<p>An Emacs::Lisp::Object's <code>to_perl</code> method performs a deep copy
+and is the counterpart of <code>perl-to-lisp</code>.
+
+<p>Lisp functions called through package Emacs::Lisp convert their return
+values using deep copying.  The same functions are accessible through
+Emacs::Lisp::Object, which does shallow conversion and always returns
+an Emacs::Lisp::Object object.
+
+<p>These examples show how the data wrapping functions work in Perl:
+
+<pre>$x = wrap [1, 2, 3];
+print ref($x);           # "Emacs::Lisp::Object"
+print ref($x-&gt;to_perl);  # "ARRAY"
+print @{&amp;list(2, 3)};    # "23"
+
+$x = Emacs::Lisp::Object::list(2, 3);
+print ref($x);           # "Emacs::Lisp::Object"
+print @{$x-&gt;to_perl};    # "23"
+</pre>
+
+<p>And in Lisp:
+
+<pre>XXX
+</pre>
+
+<p><hr>
+Node:<a name="Commands">Commands</a>,
+Previous:<a rel=previous href="#Pass-by-Reference">Pass-by-Reference</a>,
+Up:<a rel=up href="#Functions">Functions</a>
+<br>
+
+<h3>Commands</h3>
 
 <p><hr>
 Node:<a name="Control%20Structures">Control Structures</a>,
@@ -587,25 +699,56 @@ Up:<a rel=up href="#Features">Features</a>
 
 <h2>Caveats</h2>
 
+<ul>
+<li><a href="#References%20Incur%20Overhead">References Incur Overhead</a>:    Memory management hurdles. 
+<li><a href="#Conversion%20Is%20Imperfect">Conversion Is Imperfect</a>:      Natural mappings are not always 1-to-1. 
+</ul>
+
 <p><hr>
-Node:<a name="Environment">Environment</a>,
-Next:<a rel=next href="#Protocol">Protocol</a>,
+Node:<a name="References%20Incur%20Overhead">References Incur Overhead</a>,
+Next:<a rel=next href="#Conversion%20Is%20Imperfect">Conversion Is Imperfect</a>,
+Up:<a rel=up href="#Caveats">Caveats</a>
+<br>
+
+<h3>References Incur Overhead</h3>
+
+<p><hr>
+Node:<a name="Conversion%20Is%20Imperfect">Conversion Is Imperfect</a>,
+Previous:<a rel=previous href="#References%20Incur%20Overhead">References Incur Overhead</a>,
+Up:<a rel=up href="#Caveats">Caveats</a>
+<br>
+
+<h3>Conversion Is Imperfect</h3>
+
+<p><hr>
+Node:<a name="Configuration">Configuration</a>,
+Next:<a rel=next href="#Internals">Internals</a>,
 Previous:<a rel=previous href="#Features">Features</a>,
 Up:<a rel=up href="#Top">Top</a>
 <br>
 
-<h1>Environment</h1>
+<h1>Configuration</h1>
 
 <ul>
+<li><a href="#Installation">Installation</a>:                 Lisp files, Perl modules, documentation. 
 <li><a href="#The%20Easy%20Way">The Easy Way</a>:                 We like the defaults. 
 <li><a href="#Starting%20a%20Perl%20Process%20in%20Emacs">Starting a Perl Process in Emacs</a>:    <code>make-perl-interpreter</code>. 
 <li><a href="#Starting%20an%20Emacs%20Process%20in%20Perl">Starting an Emacs Process in Perl</a>:   <code>use Emacs::Lisp;</code>. 
 </ul>
 
 <p><hr>
+Node:<a name="Installation">Installation</a>,
+Next:<a rel=next href="#The%20Easy%20Way">The Easy Way</a>,
+Up:<a rel=up href="#Configuration">Configuration</a>
+<br>
+
+<h2>Installation</h2>
+
+<p><hr>
 Node:<a name="The%20Easy%20Way">The Easy Way</a>,
 Next:<a rel=next href="#Starting%20a%20Perl%20Process%20in%20Emacs">Starting a Perl Process in Emacs</a>,
-Up:<a rel=up href="#Environment">Environment</a>
+Previous:<a rel=previous href="#Installation">Installation</a>,
+Up:<a rel=up href="#Configuration">Configuration</a>
 <br>
 
 <h2>The Easy Way</h2>
@@ -614,7 +757,7 @@ Up:<a rel=up href="#Environment">Environment</a>
 Node:<a name="Starting%20a%20Perl%20Process%20in%20Emacs">Starting a Perl Process in Emacs</a>,
 Next:<a rel=next href="#Starting%20an%20Emacs%20Process%20in%20Perl">Starting an Emacs Process in Perl</a>,
 Previous:<a rel=previous href="#The%20Easy%20Way">The Easy Way</a>,
-Up:<a rel=up href="#Environment">Environment</a>
+Up:<a rel=up href="#Configuration">Configuration</a>
 <br>
 
 <h2>Starting a Perl Process in Emacs</h2>
@@ -622,24 +765,24 @@ Up:<a rel=up href="#Environment">Environment</a>
 <p><hr>
 Node:<a name="Starting%20an%20Emacs%20Process%20in%20Perl">Starting an Emacs Process in Perl</a>,
 Previous:<a rel=previous href="#Starting%20a%20Perl%20Process%20in%20Emacs">Starting a Perl Process in Emacs</a>,
-Up:<a rel=up href="#Environment">Environment</a>
+Up:<a rel=up href="#Configuration">Configuration</a>
 <br>
 
 <h2>Starting an Emacs Process in Perl</h2>
 
 <p><hr>
-Node:<a name="Protocol">Protocol</a>,
+Node:<a name="Internals">Internals</a>,
 Next:<a rel=next href="#Copying%20Conditions">Copying Conditions</a>,
-Previous:<a rel=previous href="#Environment">Environment</a>,
+Previous:<a rel=previous href="#Configuration">Configuration</a>,
 Up:<a rel=up href="#Top">Top</a>
 <br>
 
-<h1>Protocol</h1>
+<h1>Internals</h1>
 
 <p>This chapter introduces the concepts involved in supporting
-distributed exception handling and garbage collection for programming
-languages like Perl and Emacs Lisp.  These languages have a lot more
-in common underneath than meets the eye.
+single-threaded distributed exception handling and garbage collection
+for languages like Perl and Emacs Lisp.  These languages have a lot
+more in common underneath than meets the eye.
 
 <p>The chapter ends with a more concrete description of EPL's protocol. 
 This information changes with great frequency and may be completely
@@ -650,22 +793,109 @@ outdated by the time you read this.
 <li><a href="#Transport%20Layer">Transport Layer</a>:              Media of interprocess communication. 
 <li><a href="#Message%20Types">Message Types</a>:                What interpreters can say to each other. 
 <li><a href="#State%20Transitions">State Transitions</a>:            The message stream grammar. 
-<li><a href="#Implementation">Implementation</a>:               Current EPL wire protocol (<strong>subject to change</strong>). 
+<li><a href="#Protocol">Protocol</a>:                     Current EPL protocol (<strong>subject to change</strong>). 
 </ul>
 
 <p><hr>
 Node:<a name="Debugging%20Options">Debugging Options</a>,
 Next:<a rel=next href="#Transport%20Layer">Transport Layer</a>,
-Up:<a rel=up href="#Protocol">Protocol</a>
+Up:<a rel=up href="#Internals">Internals</a>
 <br>
 
 <h2>Debugging Options</h2>
+
+<p>You can make either or both processes log the messages sent between
+them.
+
+<p>
+<table width="100%">
+<tr>
+<td align="left"><b>$Emacs::EPL::debugging</b><i>
+</i></td>
+<td align="right">Perl Variable</td>
+</tr>
+</table>
+<table width="95%" align="center">
+<tr><td>
+When this variable holds a true value, the Perl side of EPL logs
+messages to and from Emacs.  Possible values are:
+
+<dl>
+<dt><code>"stderr"</code>
+<dd>Send debugging output to <code>STDERR</code>.  This works only when Perl is
+the parent process.
+
+<br><dt>a string
+<dd>Append debugging output to the file named by the string.
+
+<br><dt>a scalar reference
+<dd>Append debugging output to the scalar.  This requires the IO::Scalar
+module.
+
+<br><dt>a filehandle
+<dd>Print debugging output to the handle. 
+</dl>
+</TD></TR>
+</TABLE>
+
+<p>
+<table width="100%">
+<tr>
+<td align="left"><b>Emacs::EPL::debug</b><i> string<small>...</small>
+</i></td>
+<td align="right">Perl Function</td>
+</tr>
+</table>
+<table width="95%" align="center">
+<tr><td>
+This is the function used internally to send debugging output to the
+destination specified by <code>$Emacs::EPL::debugging</code>. 
+</TD></TR>
+</TABLE>
+
+<p>
+<table width="100%">
+<tr>
+<td align="left"><b>epl-debugging</b><i>
+</i></td>
+<td align="right">Variable</td>
+</tr>
+</table>
+<table width="95%" align="center">
+<tr><td>
+When this variable's value is non-<code>nil</code>, the Emacs side of EPL
+logs messages to and from Perl.  If it is the symbol <code>stderr</code>,
+the output goes to the standard error stream.  Otherwise, it goes to a
+buffer named <code>*epl-debug*</code>.
+
+<p>The log messages include the exact text sent to Perl, but the replies
+are printed as Lisp forms using <code>prin1</code>.  However, EPL always
+uses a buffer named <code>*perl*</code> to receive text from Perl. 
+Normally, it erases this buffer after every message, but when
+<code>epl-debugging</code> is true, it does not. 
+</TD></TR>
+</TABLE>
+
+<p>
+<table width="100%">
+<tr>
+<td align="left"><b>epl-debug</b><i> &amp;rest objects
+</i></td>
+<td align="right">Function</td>
+</tr>
+</table>
+<table width="95%" align="center">
+<tr><td>
+This is the function used internally to send output to the location
+specified by <code>epl-debugging</code>. 
+</TD></TR>
+</TABLE>
 
 <p><hr>
 Node:<a name="Transport%20Layer">Transport Layer</a>,
 Next:<a rel=next href="#Message%20Types">Message Types</a>,
 Previous:<a rel=previous href="#Debugging%20Options">Debugging Options</a>,
-Up:<a rel=up href="#Protocol">Protocol</a>
+Up:<a rel=up href="#Internals">Internals</a>
 <br>
 
 <h2>Transport Layer</h2>
@@ -674,39 +904,40 @@ Up:<a rel=up href="#Protocol">Protocol</a>
 Node:<a name="Message%20Types">Message Types</a>,
 Next:<a rel=next href="#State%20Transitions">State Transitions</a>,
 Previous:<a rel=previous href="#Transport%20Layer">Transport Layer</a>,
-Up:<a rel=up href="#Protocol">Protocol</a>
+Up:<a rel=up href="#Internals">Internals</a>
 <br>
 
 <h2>Message Types</h2>
 
 <p><hr>
 Node:<a name="State%20Transitions">State Transitions</a>,
-Next:<a rel=next href="#Implementation">Implementation</a>,
+Next:<a rel=next href="#Protocol">Protocol</a>,
 Previous:<a rel=previous href="#Message%20Types">Message Types</a>,
-Up:<a rel=up href="#Protocol">Protocol</a>
+Up:<a rel=up href="#Internals">Internals</a>
 <br>
 
 <h2>State Transitions</h2>
 
 <p><hr>
-Node:<a name="Implementation">Implementation</a>,
+Node:<a name="Protocol">Protocol</a>,
 Previous:<a rel=previous href="#State%20Transitions">State Transitions</a>,
-Up:<a rel=up href="#Protocol">Protocol</a>
+Up:<a rel=up href="#Internals">Internals</a>
 <br>
 
-<h2>Implementation</h2>
+<h2>Protocol</h2>
 
 <p><hr>
 Node:<a name="Copying%20Conditions">Copying Conditions</a>,
 Next:<a rel=next href="#Index">Index</a>,
-Previous:<a rel=previous href="#Protocol">Protocol</a>,
+Previous:<a rel=previous href="#Internals">Internals</a>,
 Up:<a rel=up href="#Top">Top</a>
 <br>
 
 <h1>Copying Conditions</h1>
 
-<p>You are welcome to distribute EPL under the terms of either the Perl Artistic
-License (as distributed with Perl 5.6.0) or the GNU General Public License.
+<p>You are welcome to distribute EPL under the terms of either the Perl
+Artistic License (as distributed with Perl 5.6.0) or the GNU General
+Public License.
 
 <blockquote>
 This library is free software; you can redistribute it and/or modify
@@ -1114,67 +1345,33 @@ Up:<a rel=up href="#Top">Top</a>
 <h1>Index</h1>
 
 <ul compact>
+<li><code>$Emacs::EPL::debugging</code>: <a href="#Debugging%20Options">Debugging Options</a>
+<li>connection types: <a href="#Transport%20Layer">Transport Layer</a>
+<li>debugging EPL: <a href="#Debugging%20Options">Debugging Options</a>
+<li>dumping message traffic: <a href="#Debugging%20Options">Debugging Options</a>
+<li><code>Emacs::EPL::debug</code>: <a href="#Debugging%20Options">Debugging Options</a>
+<li><code>epl-debug</code>: <a href="#Debugging%20Options">Debugging Options</a>
+<li><code>epl-debugging</code>: <a href="#Debugging%20Options">Debugging Options</a>
 <li>FDL, GNU Free Documentation License: <a href="#GNU%20Free%20Documentation%20License">GNU Free Documentation License</a>
-<li><code>perl-call</code>: <a href="#Functions">Functions</a>
+<li>Internals: <a href="#Internals">Internals</a>
+<li>interprocess communication: <a href="#Transport%20Layer">Transport Layer</a>
+<li>IPC: <a href="#Transport%20Layer">Transport Layer</a>
+<li>Message Types: <a href="#Message%20Types">Message Types</a>
+<li>messages: <a href="#Internals">Internals</a>
+<li><code>perl-call</code>: <a href="#Ordinary%20Functions">Ordinary Functions</a>
 <li><code>perl-eval</code>: <a href="#Evaluation">Evaluation</a>
 <li><code>perl-eval-raw</code>: <a href="#Evaluation">Evaluation</a>
+<li>pipe between Emacs and Perl: <a href="#Transport%20Layer">Transport Layer</a>
+<li>protocol: <a href="#Internals">Internals</a>
+<li>protocol states: <a href="#State%20Transitions">State Transitions</a>
+<li>standard error stream: <a href="#Debugging%20Options">Debugging Options</a>
+<li>state diagram: <a href="#State%20Transitions">State Transitions</a>
+<li>State Transitions: <a href="#State%20Transitions">State Transitions</a>
+<li>stderr: <a href="#Debugging%20Options">Debugging Options</a>
+<li>Transport Layer: <a href="#Transport%20Layer">Transport Layer</a>
+<li>wire protocol: <a href="#Protocol">Protocol</a>
 </ul>
 
-
-<h1>Table of Contents</h1>
-<ul>
-<li><a href="#Top">EPL</a>
-<li><a href="#Introduction">Introduction</a>
-<ul>
-<li><a href="#Perl%20Example">Perl Example</a>
-<li><a href="#History">History</a>
-<li><a href="#Emacs%20Lisp">Emacs Lisp</a>
-<li><a href="#Coding%20Conventions">Coding Conventions</a>
-</ul>
-<li><a href="#Features">Features</a>
-<ul>
-<li><a href="#Data%20Conversion">Data Conversion</a>
-<ul>
-<li><a href="#Scalars">Scalars</a>
-<li><a href="#The%20Null%20Value">The Null Value</a>
-<li><a href="#Symbols%20and%20Globrefs">Symbols and Globrefs</a>
-<li><a href="#Lists%20and%20Arrayrefs">Lists and Arrayrefs</a>
-<li><a href="#Vectors">Vectors</a>
-<li><a href="#Conses">Conses</a>
-<li><a href="#Scalar%20References">Scalar References</a>
-<li><a href="#Code%20References">Code References</a>
-<li><a href="#Deep%20Copying">Deep Copying</a>
-<li><a href="#Opaque%20Objects">Opaque Objects</a>
-</ul>
-<li><a href="#Evaluation">Evaluation</a>
-<li><a href="#Functions">Functions</a>
-<li><a href="#Control%20Structures">Control Structures</a>
-<li><a href="#Input%2fOutput">Input/Output</a>
-<li><a href="#Caveats">Caveats</a>
-</ul>
-<li><a href="#Environment">Environment</a>
-<ul>
-<li><a href="#The%20Easy%20Way">The Easy Way</a>
-<li><a href="#Starting%20a%20Perl%20Process%20in%20Emacs">Starting a Perl Process in Emacs</a>
-<li><a href="#Starting%20an%20Emacs%20Process%20in%20Perl">Starting an Emacs Process in Perl</a>
-</ul>
-<li><a href="#Protocol">Protocol</a>
-<ul>
-<li><a href="#Debugging%20Options">Debugging Options</a>
-<li><a href="#Transport%20Layer">Transport Layer</a>
-<li><a href="#Message%20Types">Message Types</a>
-<li><a href="#State%20Transitions">State Transitions</a>
-<li><a href="#Implementation">Implementation</a>
-</ul>
-<li><a href="#Copying%20Conditions">Copying Conditions</a>
-<ul>
-<li><a href="#GNU%20Free%20Documentation%20License">GNU Free Documentation License</a>
-<ul>
-<li><a href="#GNU%20Free%20Documentation%20License">ADDENDUM: How to use this License for your documents</a>
-</ul>
-</ul>
-<li><a href="#Index">Index</a>
-</ul>
 
 </body></html>
 

@@ -22,6 +22,7 @@
 use ExtUtils::MakeMaker;
 
 my $version = get_version_from_el ();
+my $doc_edition = 0.2;
 
 if ($ARGV[0] eq 'print_package_version') {
     print $version;
@@ -38,7 +39,7 @@ if ($ARGV[0] eq 'write_version_texi') {
     printf VERSION "\@set UPDATED %d %s %d\n", $day,
 	(qw(January February March April May June July
 	   August September October November December))[$month], $year + 1900;
-    print VERSION "\@set EDITION 0.1\n";
+    print VERSION "\@set EDITION $doc_edition\n";
     print VERSION "\@set VERSION $version\n";
     close (VERSION);
     exit;
@@ -49,14 +50,9 @@ WriteMakefile (
 	       'VERSION' => $version,
 	      );
 
-warn ("
-***NOTE
+warn ("Note: You need GNU Emacs 20 to run the test suite.\n");
+exit;
 
-To run `make test', you need GNU Emacs 21.  Copy the files in the elisp
-directory to where Emacs can find them, and set the EMACS environment
-variable to Emacs' invocation name if other than `emacs'.
-
-");
 
 sub get_version_from_el {
     open (EL, "lisp/epl.el") || die ("Can't read lisp/epl.el: $!");
@@ -76,10 +72,14 @@ doc/epl.info: $(TEXI_FILES)
 doc/epl.html: $(TEXI_FILES)
 	makeinfo -I doc --html -o $@ doc/epl.texi
 
+# For this job, any perl will do.
 doc/version.texi: Makefile.PL lisp/epl.el
 	perl Makefile.PL write_version_texi
 
 all:: doc/epl.info doc/epl.html
+
+clean::
+	cd doc; rm -f *.aux *.cp *.dvi *.fn *.ky *.log *.pg *.toc *.tp *.vr
 
 maintainer-clean:: realclean
 	rm -f doc/version.texi

@@ -1,3 +1,10 @@
+2001-02-12  John Tobey  <jtobey@john-edwin-tobey.org>
+
+	* 0.7 Release.  GNU Emacs 20 runs the test suite except
+	11_cyclic.t.  Low-level support for interactive sessions under
+	Perl control exists.  Texinfo documentation is improving, though
+	still far from complete.  Fixed some bugs.
+
 2001-02-06  John Tobey  <jtobey@john-edwin-tobey.org>
 
 	* MANIFEST: New test suite t/11_cyclic.t.
