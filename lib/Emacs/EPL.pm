@@ -5,32 +5,35 @@ package Emacs::EPL;
 # eval free of 'strict'
 sub my_eval { return (eval (shift)); }
 
-require 5.000;  # well, it's a goal anyway.
-
-$VERSION = '0.004';
-sub version_check {
-    local $^W = 0;
-    if ($_[0] != $VERSION) {
-	die ("Version mismatch: epl.el $_[0] vs. Emacs::EPL $VERSION");
-    }
-}
+require 5.000;  # well, it's a fantasy of mine.
 
 use strict;
+no strict 'refs';
+use vars ('$VERSION', '$emacs', '$exiting', '$debug_stderr');
 
-use vars ('$emacs');
+#$debug_stderr = 1;
+
+$VERSION = '0.005';
 
 BEGIN {
     # Set inlinable constants based on feature tests.
     local ($@);
-    if (eval { require B; } && defined (&B::SVf_IOK)) {
-	B->import (qw( SVf_IOK SVf_NOK ));
-	eval ('sub HAVE_B () { 1 }');
+    if (eval { require B; }) {
+	if (defined (&B::SVf_IOK)) {
+	    B->import (qw( SVf_IOK SVf_NOK ));
+	    eval ('sub HAVE_B () { 1 }');
+	}
+	else {
+	    eval ('sub HAVE_B () { 1 }');
+	    eval ('sub SVf_IOK () { 0x10000 }');
+	    eval ('sub SVf_NOK () { 0x20000 }');
+	}
     }
     else {
-	eval ('sub HAVE_B () { 0 } sub SVf_IOK; sub SVf_NOK;');
+	eval ('sub HAVE_B () { 0 }');
 	if ($@) { eval ('sub HAVE_B { 0 }'); }
+	eval ('sub SVf_IOK; sub SVf_NOK;');
     }
-    'constant'->import ('HAVE_B' => ! $@);
     eval { require overload; };
     if ($@) { eval ('sub overload::StrVal { return "$_[0]"; }'); }
 }
@@ -68,12 +71,12 @@ sub print_stuff {
     my $callback = $_[0];
 
     if (tied ($_[1]) || ref ($_[1])) {
-	print( "(epl-cb-$callback (let ((x `");
-	local $$emacs {'pos'} = "x";
+	print( "(epl-cb-$callback (let ((epl-x `");
+	local $$emacs {'pos'} = "epl-x";
 	local $$emacs {'fixup'} = '';
 	local $$emacs {'seen'};
 	print_recursive ($_[1]);
-	print( "))$$emacs{'fixup'} x))");
+	print( "))$$emacs{'fixup'} epl-x))");
     }
     else {
 	# Optimize obviously non-circular cases.  (for visual aesthetics)
@@ -234,7 +237,7 @@ sub REF::epl_print_as_lisp {
 	print( "]");
     }
     else {
-	print( ",(epl-cb-ref-new `");
+	print( ",(epl-cb-ref `");
 	local $emacs->{'pos'}
 	    = "(perl-ref-value $$emacs{'pos'})";
 	print_recursive ($value);
@@ -312,7 +315,6 @@ sub Emacs::Stream::epl_print_as_lisp {
 
 # Return the package and short name of the glob referred to.
 sub get_globref_stuff {
-    no strict 'refs';
     my $gr = shift;
     return () unless UNIVERSAL::isa ($gr, 'GLOB');
     my $str = substr (*$gr, 1);  # stringify and skip "*"
@@ -330,10 +332,11 @@ sub escape_symbol {
 # CODE refs are wrapped like opaque objects but enclosed in a lambda
 # expression to make them valid Lisp functions.
 sub CODE::epl_print_as_lisp {
-    print( ",(epl-cb-wrap-coderef ", &cb_ref_to_handle, ")");
+    print( ",(epl-cb-coderef ", &cb_ref_to_handle, ")");
 }
 
 # XXX Conses.  Should inherit from Emacs::Lisp::Object?
+# Should define subs car, cdr, setcar, setcdr, car-safe, cdr-safe, consp?
 
 sub Emacs::Lisp::Cons::epl_print_as_lisp {
     my ($value) = @_;
@@ -348,6 +351,30 @@ sub Emacs::Lisp::Cons::epl_print_as_lisp {
     $emacs->{'pos'} = "(cdr $opos)";
     print_recursive ($$value [1]);
     print( ")");
+}
+
+{
+    package Emacs::Lisp::Exception;
+
+    sub get_object {
+	return ($_[0]->[1]);
+    }
+
+    sub to_string {
+	return ($_[0]->[0]);
+    }
+    use overload '""' => \&to_string;
+
+    # XXX Why don't eq et al. use ""?
+    sub my_cmp {
+	my ($left, $right, $swapped) = @_;
+	return ($swapped ? "$right" cmp "$left" : "$left" cmp "$right");
+    }
+    use overload 'cmp' => \&my_cmp;
+
+    sub print_as_lisp {
+	print_recursive ($_[0]->get_object);
+    }
 }
 
 sub Emacs::Lisp::Opaque::epl_print_as_lisp {
@@ -382,15 +409,12 @@ sub fixup {
     if ($this =~ m/^\(perl-ref-value (.*)\)$/) {
 	return ("(perl-ref-set-value $1 $that)");
     }
-    if ($this eq 'x') {
-	# XXX How here?
-	return ("");
-    }
     die ($this);
 }
 
 # Perl data referenced in Lisp.
 
+# XXX This stuff probably belongs in $emacs.
 my ($handle_to_opaque, $next_handle, $id_to_handle);
 
 $handle_to_opaque = {};
@@ -419,7 +443,7 @@ sub cb_handle_to_ref {
 	return ($$handle_to_opaque {$handle});
     }
     else {
-	die ("stale object handle $handle\n");
+	die ("Stale object handle $handle\n");
     }
 }
 
@@ -433,6 +457,8 @@ sub cb_cons {
     return (bless [ $car, $cdr ], 'Emacs::Lisp::Cons');
 }
 
+# This is equivalent to calling &cb_unref on every handle referenced by
+# $emacs except the ones given in @_.
 sub cb_free_refs_except {
     my $new_h2o = {};
     my $new_i2h = {};
@@ -444,11 +470,14 @@ sub cb_free_refs_except {
     }
     $handle_to_opaque = $new_h2o;
     $id_to_handle = $new_i2h;
-    return undef;
+    return undef;  # Avoid sending a meaningless return value.
 }
 
-# XXX Handle the case where more than one Emacs references the same object.
-sub cb_free_refs {
+# Handle an UNREF type message in which Lisp promises never again to refer
+# to the given handles.
+# XXX should handle the case where more than one Emacs references the same
+# object. (explicit refcounts in $handle_to_opaque?)
+sub cb_unref {
     while (@_) {
 	my $handle = shift;
 	my $ref = delete ($$handle_to_opaque {$handle});
@@ -456,57 +485,75 @@ sub cb_free_refs {
 	    delete ($$id_to_handle { get_ref_id ($ref) });
 	}
     }
-    return undef;
+    return undef;  # Avoid sending a meaningless return value.
 }
+
+# These `die's are never supposed to cross user code.  They are just a
+# convenient way of indicating the current message type without parsing
+# the message in loop_1.
+
+# The `SKIP', however, crosses a user frame, and user code must rethrow it
+# if it catches it.
 
 sub cb_return {
     ($$emacs {'retval'}) = @_;
-    die ("EPL return\n");
+    die ("RETURN\n");
 }
 
-sub cb_die {
-    my $msg = shift;
-    $$emacs {'err'} = shift;
-    die ("Lisp error: $msg");
+# cb_raise is a form of RAISE.  It is called with one or two arguments.
+# If the error originated in Perl, its only argument is the original $@
+# value.  If the error originated in Lisp, the first argument is a string
+# representation, and the second argument is an error object.
+sub cb_raise {
+    $$emacs {'retval'} = [ @_ ];
+    die ("RAISE\n");
 }
 
-sub cb_propagate {
-    my ($err) = @_;
-    die ($err);
-}
-
-sub cb_throw {
-    die ("EPL throw\n");
-}
-
-sub cb_exit {
-    $$emacs {'exiting'} = 1;
-    exit;
+# POP message type.  Called during Lisp `throw'.
+# Indicates that we can no longer return normally from the current eval.
+sub cb_pop {
+    die ("POP\n");
 }
 
 sub send_message {
     my ($ofh, $err);
 
-    $ofh = select ($$emacs {'out'});
-    {
-	local ($@);
-	eval {
-	    local $\ = "";
-	    local $, = "";
-	    &print_stuff;
-	    if ($$emacs {'pid'}) {
-		print( "\n");
-	    }
-	    else {
-		# Flush the stream.
-		$| = 1;
-		$| = 0;
-	    }
-	};
-	$err = $@;
+    if ($$emacs {'exited'}) {
+	require Carp;
+	Carp::croak ("Emacs has exited");
     }
-    select ($ofh);
-    die ($err) if $err;
+
+    $ofh = select ($$emacs {'out'});
+    my $selectsaver = bless (\$ofh, 'Emacs::EPL::selectsaver');
+    sub Emacs::EPL::selectsaver::DESTROY { select ${$_[0]}; }
+
+    local $\ = "";
+    local $, = "";
+
+    if ($debug_stderr) {
+	select (STDERR);
+	print( ">>> ");
+	&print_stuff;
+	print( "\n");
+	select ($$emacs {'out'});
+    }
+
+    &print_stuff;
+
+    # XXX emacs -batch mode uses line buffering (GNU Emacs 21.0.x)
+    if ($$emacs {'pid'}) {
+	print( "\n");
+    }
+    else {
+	# Flush the stream.
+	$| = 1;
+	$| = 0;
+    }
+}
+
+sub send_and_receive {
+    &send_message;
+    return loop_1 ();
 }
 
 $Emacs::next_id = 1;
@@ -517,13 +564,11 @@ sub Emacs::new {
     return ($Emacs::id_to_emacs {$args {'id'}} = bless (\%args, $class));
 }
 
-# Avoid using %ENV in Emacs::start(), because %ENV may be tied by then.
-my $ENV_EMACS = $ENV{'EMACS'};
-
-sub Emacs::start {
-    my ($class) = @_;
-    local (*READ, *WRITE);
-    my ($prog, $pid);
+# XXX We should really implement our own open2 to make sure nothing
+# funny happens with %ENV or %SIG.  This would further eliminate the
+# restriction on module ordering, because we would use our duped
+# STDIN and STDOUT instead of the possibly tied versions.
+sub my_open2 {
 
     # Don't ask why, because I don't know.
     *IPC::Open3::croak = \&Carp::croak;
@@ -534,6 +579,18 @@ sub Emacs::start {
 
     require IPC::Open2;
 
+    { local $^W = 0; *my_open2 = \&IPC::Open2::open2; }
+    goto &my_open2;
+}
+
+# Avoid using %ENV in Emacs::start(), because %ENV may be tied by then.
+my $ENV_EMACS = $ENV{'EMACS'};
+
+sub Emacs::start {
+    my ($class) = @_;
+    local (*READ, *WRITE);
+    my ($prog, $vers, $where_i_am, @minus_L, $pid);
+
     $prog = $Emacs::program;
     if (not (defined ($prog))) {
 	$prog = $ENV_EMACS;
@@ -542,48 +599,102 @@ sub Emacs::start {
 	$prog = 'emacs';
     }
 
-    # XXX We should really implement our own open2 to make sure nothing
-    # funny happens with %ENV or %SIG.  This would further eliminate the
-    # restriction on module ordering, because we would use our duped
-    # STDIN and STDOUT instead of the possibly tied versions.
+    # In protocol terms, this is a START message we are sending.  We are
+    # the master.
 
-    $pid = IPC::Open2::open2 ("READ", "WRITE", $prog, "-batch", @Emacs::args,
-			      # XXX Build a -L path from $Config{...}.
-			      # For XEmacs, set EMACSLOADPATH.
-			      "-L", "lisp",  # XXX for the testsuite.
-			      "-l", "epl-server") || die $!;
-    return Emacs->new (
-		       'in' => *READ,
-		       'out' => *WRITE,
-		       'frame' => 'top',
-		       'pid' => $pid,
-		      );
+    $VERSION =~ m/(\d+)\.0*(\d+)/;
+    $vers = "$1.$2";
+
+    $where_i_am = $INC{'Emacs/EPL.pm'};
+    if (defined ($where_i_am) && $where_i_am =~ s,EPL\.pm\z,,) {
+	push (@minus_L, $where_i_am);
+    }
+    if (-d ('blib') && -d ('lisp')) {
+	# For the test suite.
+	push (@minus_L, 'lisp');
+    }
+    # XXX Avoid -L args with XEmacs, which seems to ignore -L and treat
+    # the next arg as a dir to open in dired mode.
+    # XXX For XEmacs, set EMACSLOADPATH.  Maybe consult EPLPATH or such too.
+    if ($prog =~ m,xemacs[^/]*$,) {
+	@minus_L = ();
+    }
+
+    $pid = my_open2 ("READ", "WRITE", $prog, "-batch", @Emacs::args,
+		     (map { ("-L", $_) } @minus_L),
+		     "-l", "epl-server", $vers);
+
+    if (! $pid) {
+	require Carp;
+	Carp::croak ("Can't run $prog: $!");
+    }
+
+    local $emacs = $class->new (
+				'in' => *READ,
+				'out' => *WRITE,
+				'pid' => $pid,
+				'depth' => 0,
+			       );
+
+    # Wait for the handshake message.
+    eval { loop_1 (); };
+    if ($@) {
+	$emacs->stop;
+	die $@;
+    }
+
+    return ($emacs);
 }
 
+# Shut down an Emacs instance.
 sub Emacs::stop {
-    my ($e) = @_;
+    local $emacs = shift;
 
-    if (! (ref ($e))) {
-	$e = $Emacs::current || return;
+    # Allow package method Emacs->stop to act implicitly on
+    # $Emacs::current, but do nothing if not currently active.
+    if (! (ref ($emacs))) {
+	if (ref ($Emacs::current)) {
+	    $Emacs::current->stop;
+	}
+	return;
     }
-    if ($$e {'pid'}) {
-	local $emacs = $e;
-	send_message ('exit');
-	waitpid ($$e {'pid'}, 0);
-	delete ($$e {'pid'});
+
+    # If it's not our child, it's our parent.  Stopping it should result
+    # in our exit.
+    if (! defined ($$emacs {'pid'})) {
+	Emacs::Lisp::funcall (\*::kill_emacs);
+	die ("kill-emacs did not work as expected");
     }
-    delete ($Emacs::id_to_emacs {$$e {'id'}});
+
+    if ($$emacs {'depth'} > 0) {
+	# This means keep sending POP messages until depth is 0, then
+	# call this function again.  And then die, because you can no
+	# longer return to the Lisp function(s) you are in.
+	die (".Emacs::EPL EXIT\n");
+    }
+
+    delete ($Emacs::id_to_emacs {$$emacs {'id'}});
+
+    if ($$emacs {'exited'}) {
+	return;
+    }
+    send_message ('pop');
+    $$emacs {'exited'} = 1;
+
+    close ($$emacs {'in'});
+    close ($$emacs {'out'});
+    if (defined ($$emacs {'pid'})) {
+	waitpid ($$emacs {'pid'}, 0);
+    }
 }
 
 sub Emacs::DESTROY {
-    my ($e) = @_;
-    local ($@);
-    eval { $e->stop; };
-    eval { delete ($Emacs::id_to_emacs {$$e {'id'}}); };
+    shift () ->stop;
 }
 
 END {
     Emacs::cleanup () if defined (&Emacs::cleanup);
+    $exiting = 1;
     @Emacs::id_to_emacs { keys (%Emacs::id_to_emacs) } = ();
     $Emacs::current = undef;
     if (scalar (keys %Emacs::id_to_emacs) != 0) {
@@ -592,10 +703,26 @@ END {
     }
 }
 
-#$SIG{'__DIE__'} = sub { warn (@_); die (@_); };
+sub check_version_and_args {
+    my ($desired, @bad_args) = @_;
+
+    if (defined ($desired)) {
+	local $^W = 0;
+	if ($desired != $VERSION) {
+	    require Carp;
+	    Carp::croak ("Version mismatch: $desired versus"
+			 . " Emacs::EPL $VERSION");
+	}
+    }
+    if (scalar (@bad_args) != 0) {
+	require Carp;
+	Carp::croak ("Unknown 'use Emacs::EPL' usage: "
+		     . join (', ', map { "'$_'" } @bad_args));
+    }
+}
 
 sub import {
-    my ($server);
+    my ($server, $version, @bad_args);
 
     shift;
     while (@_) {
@@ -604,27 +731,43 @@ sub import {
 	    $server = 1;
 	}
 	elsif ($arg =~ m/^\d/) {
-	    version_check ($arg);
+	    $version = $arg;
 	}
 	else {
-	    require Carp;
-	    Carp::croak ("Unknown 'use Emacs::EPL' arg: $arg");
+	    push (@bad_args, $arg);
 	}
     }
     if ($server) {
+
+	# We've received START, so we are a slave to Emacs.
+	# server_init() will send RETURN, or else it will die and we'll
+	# tidy up with a RAISE.
+
 	local ($@);
-	eval { server_init (); };
+	eval {
+	    check_version_and_args ($version, @bad_args);
+	    server_init ();
+	};
 	if ($@) {
-	    # Some kind of error happened.  Let `perl-interpreter-new' know
-	    # so that it can clean up.
-	    send_message ('return', $@);
+	    # Some kind of error happened.  Let `perl-interpreter-new'
+	    # know so that it can clean up.
+	    send_message ('raise', $@);
 	    exit (1);
 	}
+    }
+    else {
+	check_version_and_args ($version, @bad_args);
     }
 }
 
 # This must happen before Emacs.pm gets its grubby paws on STDIN et al.
 sub server_init {
+    if (tied (*STDIN) || tied (*STDOUT)) {
+	require Carp;
+	Carp::croak ("STD handles tied too early,"
+		     . " import Emacs::EPL before Emacs.pm");
+    }
+
     open (OUT, ">&=" . fileno (STDOUT))
 	|| die ("Can't fdopen stdout: $!");
     open (IN, "<&=" . fileno (STDIN))
@@ -635,115 +778,240 @@ sub server_init {
     $emacs = Emacs->new (
 			 'in' => *IN,
 			 'out' => *OUT,
-			 'frame' => 'lisp',
+			 # depth really starts as 1, but we are going to
+			 # send a RETURN, which normally would decrement
+			 # depth to 0, but we will use send_and_receive,
+			 # which increments rather than decrements depth
+			 # regardless of the type of message being sent.
+			 'depth' => -1,
 			);
     $Emacs::current = $emacs;
-
-    # Let `perl-interpreter-new' know startup succeeded.
-    send_message ('return', undef);
 }
 
-# Called by epl.el (perl-interpreter-new).
+# Called by epl.el (epl-interp-new).
 # Talk with Emacs via this process's standard input and output.
 # Use aliases so that the Perl variables STDIN and STDOUT may be tied.
+# State on entry is <1>.
 sub loop {
-    my $in = $$emacs {'in'};
 
-    while (1) {
-	my ($input, $output, $len, $caught, $ofh);
+    # The RETURN lets `perl-interpreter-new' know startup succeeded.
+    # This gets us from state <1> to <2,0> in the transition table.
+    # Then, we loop answering requests until we get a POP message in the
+    # outermost frame, which triggers return and ends communication.
 
-	local ($$emacs {'retval'});
-	local ($$emacs {'err'});
+    # Guard against POP from misbehaving Perl code.  That would be like
+    # saying that we created our creator.
+    #   Emacs: I give thee life.
+    #   Emacs: Evaluate this code.
+    #   Perl: I have a message for one above you.
+    #   Emacs: Impossible, fool.
 
-	$len = readline ($in);
-	$len =~ s/^(?:Lisp expression: )+//;
-	chomp ($len);
-	# XXX handle errors more robustly.
-	read ($in, $input, $len) == $len || die;
-	{
-	    local ($@);
-	    # XXX trap 'goto', 'last', 'next', 'return', 'redo', 'exit'?
-	    $output = my_eval ($input);
-	    $caught = $@;
-	}
-	if ($caught) {
-	    if ($caught eq "EPL skip\n") {
-		next;
-	    }
-	    if ($caught eq "EPL throw\n") {
-		die ("EPL skip\n");
-	    }
-	    if ($$emacs {'frame'} eq 'perl') {
-		if ($caught eq "EPL return\n") {
-		    return ($$emacs {'retval'});
-		}
-		die ($caught);
-	    }
-	    if (defined ($$emacs {'err'})) {
-		send_message ('propagate', $$emacs {'err'});
+    # Caveat: I very much doubt that this will work in any existing
+    # version of Perl.  If it were not for this attempt at
+    # ultra-correctness, this function would be reduced to
+    #   { send_and_receive ('return'); return; }
+    my ($first, $err);
+    $first = 1;
+    {
+	local ($@);
+	my $done = 0;
+	my $catch = bless (\$done, 'Emacs::EPL::loop_catch');
+    AGAIN:
+	eval {
+	    if ($first) {
+		$first = 0;
+		send_and_receive ('return');
 	    }
 	    else {
-		send_message ('error', $caught);
+		# Lord, I want to die.
+		send_and_receive ('raise', 'Perl tried to exit');
 	    }
-	    next;
+	};
+	$err = $@;
+	$done = 1;
+	sub Emacs::EPL::loop_catch::DESTROY {
+	    if (${$_[0]} == 0) {
+		# XXX Probably dies, but it's Perl's fault!
+		goto AGAIN;
+	    }
 	}
-	send_message ('return', $output);
+    }
+    if ($err) {
+	die ($err);
+    }
+    # This function gives no meaningful return value.
+    return;
+}
+
+# Loop answering CALL and UNREF messages.  Finish when we get a RETURN,
+# RAISE, POP, or EXIT.  If we get a POP, send a RETURN and raise a SKIP.
+# If we get an EXIT, raise another EXIT.  But if it's the outermost
+# frame, don't raise SKIP or EXIT, instead return normally.
+
+# This function may be reentered during the handling of any type of message.
+sub loop_1 {
+    local $$emacs {'depth'} = $$emacs {'depth'} + 1;
+    my ($input, $output, $len, $caught, $done);
+
+    while (1) {
+	local ($$emacs {'retval'});
+
+	$len = readline ($$emacs {'in'});
+	# XXX GNU Emacs 21 prints this prompt in batch mode.
+	$len =~ s/^(?:Lisp expression: )+//;
+	chomp ($len);
+
+	# XXX handle errors more robustly.
+	read ($$emacs {'in'}, $input, $len) == $len || die;
+	if ($debug_stderr) {
+	    print STDERR ("<<< $input\n");
+	}
+
+	$done = 0;
+	{
+	    local ($@);
+	    my $catch = bless (\$done, 'Emacs::EPL::loop_1_catch');
+
+	    # We will reenter during this eval if it happens to be a CALL
+	    # or UNREF message.
+	    $output = my_eval ($input);
+
+	    $caught = $@;
+	    $done = 1;
+	    sub Emacs::EPL::loop_1_catch::DESTROY {
+		if (! ${$_[0]}) {
+
+		    # Oh no!  Can't stop loop_1 from exiting, so let
+		    # Emacs know we're jumping.
+		    # This can happen in case of 'goto'.
+		    # XXX Maybe also 'exit', 'last', etc.
+
+		    # We're not allowed to pop the final frame when Emacs is
+		    # master.  loop() must convert such things into exceptions.
+		    if ($$emacs {'depth'} == 1 && ! $$emacs {'pid'}) {
+			return;  # Return from the destructor.
+		    }
+
+		    # All sorts of stuff might happen during this reentry.
+		    send_and_receive ('pop');
+		}
+	    }
+	}
+	if ($caught) {
+
+	    # XXX Could avoid a lot of overloaded cmp-ing and ""-ing of
+	    # Lisp errors by checking ref($caught) here first.
+
+	    if ($caught eq "RETURN\n") {
+		return ($$emacs {'retval'});
+	    }
+	    if ($caught eq "POP\n") {
+		if ($$emacs {'depth'} == 1) {
+		    # If Perl is master, Lisp is not allowed to pop frame 1.
+		    # It would mean an uncaught throw in epl-server.el.
+		    # Hence, Emacs is master, we are being told to exit
+		    # (perl-destruct), and we do so by returning from loop().
+		    last;
+		}
+		send_message ('return');
+		die (".Emacs::EPL SKIP\n");
+	    }
+	    if ($caught eq ".Emacs::EPL EXIT\n") {
+		if ($$emacs {'depth'} == 1) {
+		    $$emacs {'depth'} = 0;
+		    $emacs->stop;
+		    require Carp;
+		    Carp::croak ("Exited a calling Emacs");
+		}
+		send_and_receive ('pop');
+		die (".Emacs::EPL EXIT\n");
+	    }
+	    if ($caught eq ".Emacs::EPL SKIP\n") {
+		# What this means is:  The above my_eval issued a CALL
+		# back into Lisp.  In the ensuing message loop, Lisp
+		# sent a POP.  We were obliged to send a RETURN and
+		# discard the frame that had issued the CALL.  We did
+		# so by jumping here.  Now we're back to where we were
+		# when we received the original eval request.  Maybe
+		# we'll have better luck next time.
+		next;
+	    }
+	    if ($caught eq "RAISE\n") {
+		my ($string, $object) = @ { $$emacs {'retval'} };
+		if (defined ($object)) {
+		    die (bless [ $string, $object ], 'Emacs::Lisp::Exception');
+		}
+		# Exception of Perl type.
+		die ($string);
+	    }
+
+	    # By now we know that the request we are handling is a CALL,
+	    # and the exception that we caught came from (or through)
+	    # user code.  Send a RAISE message.
+	    if (UNIVERSAL::isa ($caught, 'Emacs::Lisp::Exception')) {
+		send_message ('propagate', $caught->get_object);
+	    }
+	    else {
+		send_message ('raise', $caught);
+	    }
+	}
+	else {
+	    # The request was a CALL or UNREF, and no exception was received.
+	    send_message ('return', $output);
+	}
     }
 }
 
 sub Emacs::Lisp::funcall {
     local $emacs = $Emacs::current ||= Emacs->start;
-    local $$emacs {'frame'} = 'perl';
-    # XXX Check wantarray to avoid extra refs/conversions in scalar/void.
-    send_message ('funcall', \@_);
-    return loop ();
+
+    if (defined (wantarray)) {
+	return (send_and_receive ('call', \@_));
+    }
+    send_and_receive ('call-void', \@_);
 }
 
 sub Emacs::Lisp::Object::funcall {
-    #my ($e);
-    # Use the first argument's emacs if it has one, e.g. in $x->car.
-    # Of course, this means &cons($x,$y) uses $x's emacs even if $y's
-    # is $Emacs::current.  Hmmm.
-    #if (defined ($_[1]) && UNIVERSAL::isa ($_[1], 'Emacs::Lisp::Object')) {
-	#$e = $_[1]->[0];
-    #}
-    #else {
-	#$e = $Emacs::current ||= Emacs->start;
-    #}
-    #local $emacs = $e;
-    local $emacs = $Emacs::current ||= Emacs->start;
-    local $$emacs {'frame'} = 'perl';
-    # XXX Check wantarray to avoid extra refs/conversions in scalar/void.
-    send_message ('funcall-raw', \@_);
-    return loop ();
+    if (defined (wantarray)) {
+	local $emacs = $Emacs::current ||= Emacs->start;
+	return (send_and_receive ('call-raw', \@_));
+    }
+    &Emacs::Lisp::funcall;
 }
 
+# Promise Lisp that we will not refer to this handle any more.
+# Assumptions:  This can happen only during a loop_1-inspired 'eval'
+# (when Emacs is waiting for a reply) or at top level (when Emacs is
+# waiting for a request).  We trust the other side not to send anything
+# other than UNREF messages until send_and_receive returns.
 sub Emacs::Lisp::Object::DESTROY {
     my ($e, $handle) = @ { $_[0] };
-    return if $$e {'exiting'};
-    local ($@);
+
+    # If Perl is exiting (perhaps due to `perl-destruct'), do nothing.
+    # Rely on Emacs to remember what refs we have and to free them.
+    # (It should anyway, in case of abnormal subprocess termination.)
+    return if $exiting;
+
+    # If Emacs has exited (`Emacs->stop'), do nothing.  The handle is
+    # already invalid.
+    return if $$emacs {'exited'};
+
     local $emacs = $e;
-    eval {  # Ignore errors.
-	send_message ('unref-objects', $handle);
-    };
+    send_and_receive ('unref', [ $handle ]);
 }
 
 sub Emacs::Lisp::Object::to_perl {
+    return unless defined (wantarray);
     if (! UNIVERSAL::isa ($_[0], 'Emacs::Lisp::Object')) {
-	Carp::croak ("Argument to to_perl is not an Emacs Lisp object");
+	return ($_[0]);
     }
-    local $emacs = $_[0]->[0];
-    local $$emacs {'frame'} = 'perl';
-    send_message ('unwrap', $_[0]);
-    return loop ();
+    local $Emacs::current = $_[0]->[0];  # XXX hmmm.
+    return (Emacs::Lisp::funcall (\*::epl_echo_one_arg, $_[0]));
 }
 
 sub Emacs::Lisp::lisp {
-    $Emacs::current ||= Emacs->start;
-    local $emacs = $Emacs::current;
-    local $$emacs {'frame'} = 'perl';
-    send_message ('wrap', $_[0]);
-    return loop ();
+    return unless defined (wantarray);
+    return (Emacs::Lisp::Object::funcall (\*::epl_echo_one_arg, $_[0]));
 }
 
 1;
@@ -763,6 +1031,142 @@ Emacs::EPL - Protocol implementation and data conversions for Emacs Perl
 =head1 DESCRIPTION
 
 This module is used internally by F<epl.el> and Emacs::Lisp.
+
+If you use C<eval> to catch errors in Lisp functions, and C<$@>
+contains a string beginning with C<'.Emacs::EPL'> (note initial dot),
+be sure to C<die> with the same string before returning control to
+Lisp.
+
+=head2 Protocol State Transition Table
+
+This stuff is mainly for the benefit of the author.
+
+    NO.   CONSTRAINTS            INITIAL       MSG CLASS    FINAL
+    ----- ---------------------- ------------- ------------ --------------
+    (1)                          <0>           START        <1>
+    (2)                          <1>           RAISE        <0>
+    (3)                          <1>           RETURN       <2,0>
+    (4)                          <2,0>         RETURN       <0>
+    (5)                          <2,n>         UNREF        <3,0,n>
+    (6)                          <2,n>         CALL         <2,n+1>
+    (7)   n>0                    <2,n>         RETURN       <2,n-1>
+    (13)                         <3,0,n>       RETURN       <2,n>
+    (14)                         <3,m,n>       UNREF        <3,m+1,n>
+    (15)  m>0                    <3,m,n>       RETURN       <3,m-1,n>
+
+The I<master> is defined to be the process that sends the START
+message.  The other process is the I<slave>.  It follows by induction
+from the table that the master sends in states <0>, <2,n> for even n,
+and <3,m,n> for odd m+n, and that the slave sends in all other states.
+
+=head2 Message Classes
+
+=over 4
+
+=item START
+
+Initiate communication, e.g. by running a subprocess or opening a
+connection.  The slave, if able, sends either a handshake (RETURN) or
+an exception (RAISE) in response.  If an exception is raised, no
+further communication is permitted.
+
+ frame = 1
+
+=item CALL
+
+Request to run code.  The calling process may be reentered by a
+subsequent CALL.  Our call ends when we receive a RETURN, RAISE, or
+POP in the same frame or we send a POP in a next inner frame.  If we
+I<receive> a POP and subsequently use RETURN to exit this frame, the
+value we return will be ignored.
+
+ frame += 1
+ Lisp: funcall
+ Perl: eval
+
+=item RETURN
+
+Deliver the response to a CALL request (7), report successful startup
+(3), or mark the end of a series of UNREF requests (13, 15).  Not
+permitted in a popped frame.
+
+The three meanings could have been given different names: ``return'',
+``handshake'', and ``end_unrefs''.
+
+ frame -= 1
+ Lisp: function return
+ Perl: eval return
+
+=item RAISE
+
+Return via exception mechanism, i.e., non-locally.  RAISE has the same
+protocol semantics as RETURN, except that it is permitted in popped
+frames.  It is expected that unless the user has taken specific steps
+(i.e., a "try" block) in the frame being returned to, the recipient
+will propagate the exception by sending another RAISE with the same or
+equivalent argument.
+
+ frame -= 1
+ Lisp: signal
+ Perl: die
+
+=item POP
+
+Either terminate communication (4), or exit the current frame (11,
+12).  This also says that we will ignore the argument of a subsequent
+RETURN from this frame (but will not ignore a RAISE value).
+
+ frame -= 1
+ Lisp: throw, kill-emacs
+ Perl: exit, any nonlocal jump other than die
+
+=item UNREF
+
+Send a list of handles that they have given us and that we promise
+never to use again, so that they may free up some resources.  Maybe
+the resources they free will include references to our stuff, so they
+may send us some UNREF requests before ending the list with a RETURN.
+They must not, however, issue any other kinds of requests until
+they've sent RETURN in this frame.
+
+ frame += 1
+ Lisp: perl-free-ref, whatever garbage-detection means is in effect
+ Perl: DESTROY
+
+=back
+
+=head2 Thoughts
+
+Mark-and-sweep garbage collection could be supported by:
+
+    (16)                         <2,n,@s>      GC           <4,n,@s>
+    (17)                         <4,n,@s>      RETURN(0)    <2,n,@s>
+    (18)                         <4,n,@s>      RETURN(1)    <5,0,n,@s>
+    (19)                         <5,0,n,@s>    RETURN       <3,0,n,@s>
+    (20)                         <5,m,n,@s>    MARK         <5,m+1,n,@s>
+    (21)  m>=1                   <5,m,n,@s>    RETURN       <5,m-1,n,@s>
+
+Transition (17) gives the receiver a chance to refuse to support
+mark-and-sweep or simply to indicate that all references are in use.
+Which of these two is the case could be indicated by another return
+code.
+
+It might be useful to distinguish between recursive and nonrecursive
+calls:
+
+    (22)                         <2,n>         SIMPLE_CALL  <6,n>
+    (23)                         <6,n>         RETURN       <2,n>
+
+Further state classes could be introduced to allow UNREF, GC, RAISE,
+or POP operations during nonrecursive calls.  Better yet, add some
+boolean parameters to the states we've got and to CALL.
+
+Hey, how about CALL/CC and START_THREAD.  Then of course you'd need
+JOIN, YIELD, LOCK, WAIT, ... .  Pretty soon you'd have yourself an
+operating system.  Yawn.
+
+The current EPL implementation uses only transitions of types (1) to
+(15).
 
 
 =head1 COPYRIGHT

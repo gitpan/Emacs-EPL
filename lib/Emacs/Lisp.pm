@@ -4,13 +4,8 @@
 
 package Emacs::Lisp;
 
-use 5.005;  # XXX
+use 5.002;  # prototypes
 use Carp ();
-
-{
-    local $ENV{PERL_DL_NONLAZY} = "";
-    require B;
-}
 
 use strict;
 no strict 'refs';
@@ -19,7 +14,15 @@ my (%special);
 
 require Exporter;
 
-$VERSION = '1.0';
+BEGIN {
+    # Set inlinable constants based on feature tests.
+    local ($@);
+    local $ENV{PERL_DL_NONLAZY} = "";  # Why?  I forgot.  Needed for 5.005.
+    eval { require B; };
+    eval ('sub HAVE_B () {'. ($@ ? 0 : 1) .'}');
+}
+
+$VERSION = '1.01';
 if (! defined (&Emacs::Lisp::funcall)
     || ! defined (&Emacs::Lisp::Object::funcall))
 {
@@ -300,17 +303,24 @@ sub can { return &UNIVERSAL::can || &$can (__PACKAGE__, $_[1]); }
   );
 
 sub setq (&) {
+    if (! HAVE_B()) {
+	warn ("This version of Perl can't do setq.  Import explicitly");
+	# But try anyway.
+	return (&{$_[0]}());
+    }
+
     my $coderef = shift;
     my $callpkg = caller;
     my @vars = _assignees($coderef);
     local $Exporter::ExportLevel = 1;
     import Emacs::Lisp @vars;
-    &$coderef;
+    return (&$coderef);
 }
 
 my (@_assignees);
 
 sub _assignees ($) {
+    return unless HAVE_B();
     my ($coderef) = @_;
 
     # What an irony that the B module is not conducive to thread-safety!
@@ -327,6 +337,7 @@ sub _assignees ($) {
 # With 5.6.0 you're supposed to use $op->name, which would return 'sassign'.
 # 5.6.0's $op->ppaddr gives 'PL_ppaddr[OP_SASSIGN]'.  Oh well.
 sub match_op_name {
+    return unless HAVE_B();
     my ($op, $name) = @_;
     return $op->ppaddr =~ /p_$name\b/i;
 }
@@ -337,6 +348,7 @@ sub match_op_name {
 # Recklessly avoid type checking unless/until we have problems.
 sub B::OBJECT::Emacs__Lisp_push_op_assignees { }
 sub B::BINOP::Emacs__Lisp_push_op_assignees {
+    return unless HAVE_B();
     my ($op) = @_;
 
     return unless match_op_name ($op, 'sassign');
@@ -363,6 +375,7 @@ sub interactive (;$) {
 # See if the first thing the sub does is assign @_ to a list.
 # For use in finding reasonable function parameter names for defun.
 sub _param_names {
+    return undef unless HAVE_B();
     my ($code) = @_;
     my ($top, $aa, $op, @names, @pad_name, $name);
 
@@ -551,33 +564,13 @@ sub track_mouse (&) {
 
 sub unwind_protect {
     my ($body, $handler) = @_;
-    my ($real_body, $ret, $err, $list_context);
 
-    $list_context = wantarray;
-
-    $real_body = sub {
-	local ($@);
-	if ($list_context) {
-	    $ret = [ eval { &$body (); } ];
-	}
-	else {
-	    $ret = eval { &$body (); };
-	}
-	$err = $@;
-    };
-
-    &eval ([\*::unwind_protect,
-	    [\*::perl_call, _opaque $real_body],
-	    [$handler]]);
-
-    die $err if $err;
-
-    if ($list_context) {
-	return @$ret;
+    for ($body, $handler) {
+	$_ = _opaque $_ if ref eq 'CODE';
     }
-    else {
-	return $ret;
-    }
+    return (&eval ([\*::unwind_protect,
+		    [\*::perl_call, $body],
+		    [\*::perl_call, $handler]]));
 }
 
 
@@ -1204,6 +1197,10 @@ You should be able to decide whether a scalar becomes a Lisp integer,
 float, or string.  Using Perl 5.005 sometimes gives different results
 from Perl 5.6.
 
+=item * XEmacs package autoloads commands but not key bindings.
+
+I need to figure out how to do this.
+
 =back
 
 
@@ -1243,9 +1240,10 @@ garbage collection cycles to be freed.  It is therefore probably best
 to keep the number and complexity of such references to a minimum.
 
 To make matters worse, if Emacs does not support weak hash tables,
-Lisp must explicitly free its references to Perl data.  Neither GNU
-Emacs 20 nor XEmacs 21 support weak hash tables, but Perlmacs solves
-this problem by adding necessary support.
+Lisp must explicitly free its references to Perl data.  GNU Emacs 20
+does not support weak hash tables, but Perlmacs solves this problem by
+adding necessary support.  XEmacs 21 has weak hash tables, but EPL
+does not yet know how to use them.
 
 =back
 

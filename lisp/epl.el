@@ -17,7 +17,7 @@
 ;; Boston, MA 02111-1307, USA.
 
 
-(defconst epl-version "0.4" "Version numbers of EPL.")
+(defconst epl-version "0.5" "Version numbers of EPL.")
 
 ;; Gawd this would be so much easier in Perl.  :-)
 (defconst epl-major-version
@@ -31,7 +31,7 @@
   "Minor version number of this version of EPL.")
 
 (defvar epl-debug nil
-  "If true, log messages in buffer \"epl-debug\".
+  "If true, log messages in buffers \"epl-debug\" and \"perl\".
 If `stderr', send them to the standard error stream instead.")
 
 (defun epl-do-debug (object)
@@ -43,19 +43,10 @@ If `stderr', send them to the standard error stream instead.")
 	(prin1 object))
       (sit-for 0))))
 
-(defmacro epl-debug (object)
-  `(if epl-debug (epl-do-debug ,object)))
+(defsubst epl-debug (object)
+  (if epl-debug (epl-do-debug object)))
 
-;; Compatibility.
-;; XXX Should we even be using string-bytes??
-(or (fboundp 'string-bytes)
-    (defalias 'string-bytes 'length))
-(or (fboundp 'make-hash-table)
-    (require 'cl))
-;; XXX Why doesn't cl define puthash in the first place?  Should we
-;; use a private epl-puthash instead?
-(or (fboundp 'puthash)
-    (defalias 'puthash 'cl-puthash))
+(require 'epl-compat)
 
 (put 'perl-error 'error-conditions '(perl-error error))
 (put 'perl-error 'error-message "Perl error")
@@ -79,17 +70,34 @@ See `make-perl-interpreter'.")
 (defvar epl-interp nil
   "Copy of `perl-interpreter' used internally.  Don't alter this.")
 
-(defvar epl-interp-map nil
+(defvar epl-interp-map (make-hash-table :test 'eq :size 5)
   "Hash table mapping process object to Perl interpreter object.")
+
+(defvar epl-exiting nil
+  "True if trying to exit Emacs.")
 
 (defun epl-kill-emacs-hook ()
   "Tell all Perl subprocesses to exit."
-  (maphash (lambda (proc interp)
-	     (if (processp proc)
-		 (perl-destruct interp)))
-	   epl-interp-map))
+  (let ((epl-exiting t))
+    (maphash (lambda (proc interp)
+	       (if (processp proc)
+		   (perl-destruct interp)))
+	     epl-interp-map)))
 
-;; perl-interpreter type:
+(add-hook 'kill-emacs-hook 'epl-kill-emacs-hook)
+
+(defvar epl-post-gc-flag nil
+  "Set by epl-post-gc-hook, reset by epl-gc.")
+
+(defun epl-post-gc-hook ()
+  (setq epl-post-gc-flag t))
+
+(defun epl-gc ()
+  (maphash epl-interp-map
+	   (error))
+  (setq epl-post-gc-flag nil))
+
+;; epl-interp type:
 ;; IN          == input stream
 ;; OUT         == output stream, a process object
 ;; BUFFER      == buffer for process output  XXX memory waste?
@@ -97,28 +105,57 @@ See `make-perl-interpreter'.")
 ;; NEXT-HANDLE == handle of next Lisp object to be wrapped
 ;; REFS        == weak hash table mapping handle to perl-value object
 ;; NREFS       == last count of REFS
-;; STATUS      == ready, returning, destroyed
+;; STATUS      == nil, ready, destroyed, exit, signal
+;; DEPTH       == how many requests we are currently handling
 
-(defun perl-interpreter-p (object)
-  "Return t if OBJECT is a Perl interpreter"
+;; Let's see how long before I break down and go get defstruct...
+
+(defun epl-interp-p (object)
   (and (vectorp object)
-       (= (length object) 9)
-       (eq (aref object 0) 'perl-interpreter-tag)))
+       (= (length object) 10)
+       (eq (aref object 0) 'epl-interp-tag)))
 
-(defmacro perl-interpreter-in           (interp)  (list 'aref interp 1))
-(defmacro perl-interpreter-out          (interp)  (list 'aref interp 2))
-(defmacro perl-interpreter-buffer       (interp)  (list 'aref interp 3))
-(defmacro perl-interpreter-gcpro        (interp)  (list 'aref interp 4))
-(defmacro perl-interpreter-next-handle  (interp)  (list 'aref interp 5))
-(defmacro perl-interpreter-refs         (interp)  (list 'aref interp 6))
-(defmacro perl-interpreter-nrefs        (interp)  (list 'aref interp 7))
-(defmacro perl-interpreter-status       (interp)  (list 'aref interp 8))
+(defmacro epl-interp-in           (interp)  (list 'aref interp 1))
+(defmacro epl-interp-out          (interp)  (list 'aref interp 2))
+(defmacro epl-interp-buffer       (interp)  (list 'aref interp 3))
+(defmacro epl-interp-gcpro        (interp)  (list 'aref interp 4))
+(defmacro epl-interp-next-handle  (interp)  (list 'aref interp 5))
+(defmacro epl-interp-refs         (interp)  (list 'aref interp 6))
+(defmacro epl-interp-nrefs        (interp)  (list 'aref interp 7))
+(defmacro epl-interp-status       (interp)  (list 'aref interp 8))
+(defmacro epl-interp-depth        (interp)  (list 'aref interp 9))
 
-(defmacro perl-interpreter-set-in     (interp x)  (list 'aset interp 1 x))
-(defmacro perl-interpreter-set-next-handle
-                                      (interp x)  (list 'aset interp 5 x))
-(defmacro perl-interpreter-set-nrefs  (interp x)  (list 'aset interp 7 x))
-(defmacro perl-interpreter-set-status (interp x)  (list 'aset interp 8 x))
+(defmacro epl-interp-set-in           (interp x)  (list 'aset interp 1 x))
+(defmacro epl-interp-set-out          (interp x)  (list 'aset interp 2 x))
+(defmacro epl-interp-set-buffer       (interp x)  (list 'aset interp 3 x))
+(defmacro epl-interp-set-gcpro        (interp x)  (list 'aset interp 4 x))
+(defmacro epl-interp-set-next-handle  (interp x)  (list 'aset interp 5 x))
+(defmacro epl-interp-set-refs         (interp x)  (list 'aset interp 6 x))
+(defmacro epl-interp-set-nrefs        (interp x)  (list 'aset interp 7 x))
+(defmacro epl-interp-set-status       (interp x)  (list 'aset interp 8 x))
+(defmacro epl-interp-set-depth        (interp x)  (list 'aset interp 9 x))
+
+(defun make-epl-interp (&rest named-args)
+  (let ((interp (make-vector 10 nil))
+	name value)
+    (aset interp 0 'epl-interp-tag)
+    (while named-args
+      (setq name (car named-args)
+	    value (car-safe (cdr named-args))
+	    named-args (cdr-safe (cdr named-args)))
+      (cond ((eq name :in)          (epl-interp-set-in interp value))
+	    ((eq name :out)         (epl-interp-set-out interp value))
+	    ((eq name :depth)       (epl-interp-set-depth interp value))
+	    (t (signal 'error "Invalid argument list" name))))
+    (epl-interp-set-gcpro interp (make-hash-table :test 'eq :size 20))
+    (epl-interp-set-buffer interp (generate-new-buffer
+				   (if (processp (epl-interp-out interp))
+				       (process-name (epl-interp-out interp))
+				     "perl")))
+    (epl-interp-set-next-handle interp 1)
+    (epl-interp-set-refs interp (epl-make-refs-hash-table))
+    (epl-interp-set-nrefs interp 0)
+    interp))
 
 (defun perl-interpreter-new (&rest cmdline)
   "Used internally by `make-perl-interpreter'.
@@ -134,49 +171,40 @@ Create and return a new Perl interpreter object."
 					epl-major-version epl-minor-version))
 			  perl-interpreter-args
 			  '("-eEmacs::EPL::loop")))))
-	 (buf (generate-new-buffer (process-name out)))
-	 (epl-interp (vector 'perl-interpreter-tag
-			     nil ;in
-			     out ;out
-			     buf ;buffer
-			     (make-hash-table :test 'eq) ;gcpro
-			     1   ;next-handle
-			     (make-hash-table :test 'eq :weakness 'value) ;refs
-			     0   ;nrefs
-			     'init ;status
-			     ))
-	 err)
-    (perl-interpreter-set-in epl-interp
-			     `(lambda (&optional ch)
-				(epl-read-char ,epl-interp ch)))
+	 (epl-interp (make-epl-interp :in nil :out out :depth 0)))
+    (epl-interp-set-in epl-interp
+		       `(lambda (&optional ch)
+			  (epl-read-char ,epl-interp ch)))
     (process-kill-without-query out)
     (set-process-filter out 'epl-filter)
     (set-process-sentinel out 'epl-sentinel)
-    (when (null epl-interp-map)
-      (setq epl-interp-map (make-hash-table :test 'eq))
-      (add-hook 'kill-emacs-hook 'epl-kill-emacs-hook))
-    (puthash out epl-interp epl-interp-map)
+    (epl-puthash out epl-interp epl-interp-map)
     ;; Wait for the handshake message.
-    (setq err (epl-loop))
-    (when err
-      (perl-destruct epl-interp)
-      (signal 'perl-error (list err)))
-    (perl-interpreter-set-status epl-interp 'ready)
+    (condition-case err
+	(epl-loop)
+      (error (perl-destruct epl-interp)
+	     (signal (car err) (cdr err))))
+    (epl-interp-set-status epl-interp 'ready)
     epl-interp))
+
+(defun perl-interpreter-p (object)
+  "Return t if OBJECT is a Perl interpreter"
+  (epl-interp-p object))
 
 (defun perl-destruct (&optional interpreter)
   "Attempt to shut down the specified Perl interpreter.
 If no arg is given, shut down the current Perl interpreter."
   (or interpreter (setq interpreter perl-interpreter))
-  (if (perl-interpreter-p interpreter)
-      (let ((status (perl-interpreter-status interpreter)))
-	(if (eq status 'running)
+  (if (epl-interp-p interpreter)
+      (let ((status (epl-interp-status interpreter)))
+	(if (and (eq status 'running)
+		 (not epl-exiting))
 	    (error
 	     (format "Attempt to kill Perl from within Perl%s"
-		     (if (processp (perl-interpreter-out interpreter))
+		     (if (processp (epl-interp-out interpreter))
 			 "; use `M-x top-level RET' first"
 		       ""))))
-	(set-process-sentinel (perl-interpreter-out interpreter) nil)
+	(set-process-sentinel (epl-interp-out interpreter) nil)
 	(if (eq status 'ready)
 	    (condition-case nil
 		(let ((epl-interp interpreter))
@@ -185,12 +213,12 @@ If no arg is given, shut down the current Perl interpreter."
 	(if (not (eq status 'destroyed))
 	    (condition-case nil
 		(progn
-		  (remhash (perl-interpreter-out interpreter)
+		  (remhash (epl-interp-out interpreter)
 			   epl-interp-map)
-		  (kill-buffer (perl-interpreter-buffer interpreter))
-		  (delete-process (perl-interpreter-out interpreter)))
+		  (kill-buffer (epl-interp-buffer interpreter))
+		  (delete-process (epl-interp-out interpreter)))
 	      (error nil)))
-	(perl-interpreter-set-status interpreter 'destroyed)))
+	(epl-interp-set-status interpreter 'destroyed)))
   (if (eq perl-interpreter interpreter)
       (setq perl-interpreter nil)))
 
@@ -221,8 +249,8 @@ If no arg is given, shut down the current Perl interpreter."
 (defun epl-filter (proc string)
   (save-excursion
     (let ((interp (gethash proc epl-interp-map)))
-      (when (perl-interpreter-p interp)
-	(set-buffer (perl-interpreter-buffer interp))
+      (when (epl-interp-p interp)
+	(set-buffer (epl-interp-buffer interp))
 	;; Insert the text, advancing the process marker.
 	(goto-char (point-max))
 	(insert string)
@@ -231,8 +259,7 @@ If no arg is given, shut down the current Perl interpreter."
 (defun epl-sentinel (proc string)
   (let ((interp (gethash proc epl-interp-map nil)))
     (if interp
-	(perl-interpreter-set-status interp
-				     (process-status proc))
+	(epl-interp-set-status interp (process-status proc))
 	(perl-destruct interp)
 	(if (eq interp epl-interp)
 	    ;; XXX newline
@@ -253,8 +280,8 @@ If no arg is given, shut down the current Perl interpreter."
 (defmacro perl-value-handle      (value) (list 'aref value 2))
 
 (defun epl-read-char (interp ch)
-  (let* ((out (perl-interpreter-out interp)))
-    (with-current-buffer (perl-interpreter-buffer interp)
+  (let* ((out (epl-interp-out interp)))
+    (with-current-buffer (epl-interp-buffer interp)
       (if ch
 	  (progn
 	    (unless (eq ch (preceding-char))
@@ -299,9 +326,7 @@ to the sub or coderef.
 
 
 (perl-call SUB &optional CONTEXT &rest ARGS)"
-  (if (functionp sub)
-      (apply 'funcall sub context-and-args)
-    (epl-subcall nil sub context-and-args)))
+  (epl-subcall nil sub context-and-args))
 
 ;; XXX "context-and-args" appears in describe-function.
 ;;;###autoload
@@ -346,33 +371,35 @@ sub name or coderef.  The remaining arguments are treated the same as in
 		((eq context 'void-context) nil)
 		(t (progn (setq args (cons context args))
 			  (setq context 'scalar-context))))))
-    (if (stringp sub)
-	(let* ((simple-p (string-match "\\`[a-zA-Z_][a-zA-Z0-9_]*\\'" sub))
-	       (qualified-p (and (not simple-p) (string-match "'\\|::" sub))))
-	  (if (not simple-p)
-	      ;; See if we have to use &{"SUB"}() instead of &SUB().
-	      (let ((split (split-string sub "'\\|::")))
-		(and split (= (length (car split)) 0)
-		     (setq split (cdr split)))
-		(mapcar
-		 (lambda (name)
-		   (or (string-match "\\`[a-zA-Z_][a-zA-Z0-9_]*\\'" name)
-		       (setq quoted-p t)))
-		 split)))
-	  ;; Make an unqualified name refer to package main, even though
-	  ;; the eval will be in a private package.
-	  (if (not qualified-p)
-	      (setq sub (concat "::" sub))))
-      ;; If not a string, quoted-p is t.  (Need {} after &)
-      (setq quoted-p t))
-    (epl-eval
-     perl-interpreter rawp context
-     (if quoted-p
-	 (list "&{" (epl-recursive-serialize sub) "}(")
-       (list "&" sub "("))
-     (and args
-	  (list "@{" (epl-serialize args) "}"))
-     ")")))
+    (if (functionp sub)
+	(apply 'funcall sub args)
+      (if (stringp sub)
+	  (let* ((simple-p (string-match "\\`[a-zA-Z_][a-zA-Z0-9_]*\\'" sub))
+		 (qualified-p (and (not simple-p)
+				   (string-match "'\\|::" sub))))
+	    (if (not simple-p)
+		;; See if we have to use &{"SUB"}() instead of &SUB().
+		(let ((split (split-string sub "'\\|::")))
+		  (and split (= (length (car split)) 0)
+		       (setq split (cdr split)))
+		  (mapcar
+		   (lambda (name)
+		     (or (string-match "\\`[a-zA-Z_][a-zA-Z0-9_]*\\'" name)
+			 (setq quoted-p t)))
+		   split)))
+	    ;; Make an unqualified name refer to package main, even though
+	    ;; the eval will be in a private package.
+	    (if (not qualified-p)
+		(setq sub (concat "::" sub))))
+	;; If not a string, quoted-p is t.  (Need {} after &)
+	(setq quoted-p t))
+      (epl-eval
+       perl-interpreter rawp context
+       (if quoted-p
+	   (list "&{" (epl-recursive-serialize sub) "}(")
+	 (list "&" sub "("))
+       (and args
+	    (list "@{" (epl-serialize args) "}")) ")"))))
 
 (defun epl-eval (interp rawp context &rest text)
   (let ((epl-interp interp)
@@ -386,12 +413,11 @@ sub name or coderef.  The remaining arguments are treated the same as in
 	  (t (error "Unknown context for perl-eval" context)))
     (if rawp
 	(progn
-	  (epl-send-message "&cb_ref_to_handle(\\("
-			    text-begin text text-end
-			    "))")
-	  (epl-cb-handle-to-perl-value (epl-loop)))
-      (epl-send-message text-begin text text-end)
-      (epl-loop))))
+	  (epl-cb-handle-to-perl-value
+	   (epl-send-and-receive "&cb_ref_to_handle(\\("
+				 text-begin text text-end
+				 "))")))
+      (epl-send-and-receive text-begin text text-end))))
 
 (defun epl-send-string (out string)
   (epl-debug string)
@@ -407,7 +433,7 @@ sub name or coderef.  The remaining arguments are treated the same as in
   (if (stringp strings)
       (progn
 	(let ((olen (cdr stack))
-	      (nlen (string-bytes strings)))
+	      (nlen (epl-string-bytes strings)))
 	  (if (< (+ olen nlen) epl-big-string-size)
 	      (progn
 		(setcar stack (cons strings (car stack)))
@@ -432,12 +458,15 @@ sub name or coderef.  The remaining arguments are treated the same as in
 ;; and strings.
 (defun epl-measure-strings (strings)
   (if (stringp strings)
-      (string-bytes strings)
+      (epl-string-bytes strings)
     (apply '+ (mapcar 'epl-measure-strings strings))))
 
 (defun epl-send-message (&rest text)
+  (or (eq (epl-interp-status epl-interp) 'ready)
+      (eq (epl-interp-status epl-interp) nil)
+      (error "Perl has exited"))
   (epl-debug "\n>>> ")
-  (let ((out (perl-interpreter-out epl-interp))
+  (let ((out (epl-interp-out epl-interp))
 	(stack (cons nil 0)))
     (epl-send-strings out
 		      (cons (format "%d\n"
@@ -446,66 +475,110 @@ sub name or coderef.  The remaining arguments are treated the same as in
 		      stack)
     (epl-flush out stack)))
 
+(defun epl-send-and-receive (&rest text)
+  (let ((inhibit-quit t))
+    (apply 'epl-send-message text)
+    (epl-loop)))
+
 ;; Answer requests until we get our reply or an error.
-;; XXX Trap ^G and send perl some kind of a signal.
 (defun epl-loop ()
-  (let ((status (perl-interpreter-status epl-interp))
-	(inhibit-quit t))
+  (let ((depth (epl-interp-depth epl-interp)))
     (unwind-protect
-	(progn
-	  (perl-interpreter-set-status epl-interp 'running)
-	  (catch 'epl-return
-	    (while t
-	      (let ((form (read (perl-interpreter-in epl-interp))))
-		(epl-debug "\n<<< ")
-		(epl-debug form)
-		(eval form)))))
-      (perl-interpreter-set-status epl-interp status))))
+	(catch 'return
+	  (epl-interp-set-depth epl-interp (1+ depth))
+	  (while t
+	    (let ((form (read (epl-interp-in epl-interp)))
+		  reply done msg)
+	      (epl-debug "\n<<< ")
+	      (epl-debug form)
+	      (unwind-protect
+		  (setq reply
+			(condition-case err
+			    (catch 'epl-reply
+			      (throw 'epl-reply
+				     (cons 'return-to-perl (eval form))))
+			  (error (cons 'raise err)))
+			done t)
+		(when (not done)
+		  ;; Oops, exiting abnormally via `throw'.
+		  (if (and (eq depth 0)
+			   (not (processp (epl-interp-out epl-interp))))
+		      ;; Protocol error if we don't trap this.
+		      (throw 'return nil))
+		  ;; All sorts of things can happen during this reentry.
+		  (epl-send-and-receive "&cb_pop()")))
+	      (setq msg (car reply) reply (cdr reply))
+	      (cond ((eq msg 'return) (throw 'return reply))
+		    ((eq msg 'pop)
+		     (if (eq depth 0)
+			 (throw 'return nil))
+		     (epl-send-message "&cb_return()")
+		     (throw 'epl-reply '(skip)))
+		    ((eq msg 'skip) nil)
+		    ((eq msg 'exit)
+		     (when (eq depth 0)
+		       (epl-interp-set-depth epl-interp 0)
+		       (perl-destruct epl-interp)
+		       (error "Exiting a calling Perl"))
+		     (epl-send-and-receive "&cb_pop()")
+		     (throw 'epl-reply '(exit)))
+		    ((eq msg 'propagate) (signal (car reply) (cdr reply)))
+		    ((eq msg 'raise)
+		     (epl-send-message "&cb_raise("
+				       (epl-serialize-exception reply)
+				       ")"))
+		    ((eq msg 'return-to-perl)
+		     (epl-send-message "&cb_return(" reply ")"))
+		    (t (error "huh? %s" msg))))
+	    ;; Erase the message buffer if not debugging.
+	    (or epl-debug
+		(with-current-buffer (epl-interp-buffer epl-interp)
+		  (erase-buffer)))))
+      (epl-interp-set-depth epl-interp depth))))
 
 ;; "epl-cb-" functions are called by evalled messages.
 
 (defun epl-cb-return (ret)
-  (throw 'epl-return ret))
+  (throw 'epl-reply (cons 'return ret)))
 
 (defun epl-cb-handle-to-perl-value (handle)
-  (let ((refs (perl-interpreter-refs epl-interp)))
+  (let ((refs (epl-interp-refs epl-interp)))
     (or (gethash handle refs)
 	;; XXX They should document the return value of puthash.
 	(let (obj)
 	  (prog1
 	      (setq obj (vector 'perl-value-tag epl-interp handle))
-	    (puthash handle obj refs)
-	    (perl-interpreter-set-nrefs
+	    (epl-puthash handle obj refs)
+	    (epl-interp-set-nrefs
 	     epl-interp
-	     (1+ (perl-interpreter-nrefs epl-interp)))
+	     (1+ (epl-interp-nrefs epl-interp)))
 	    (epl-update-nrefs-maybe-gc refs))))))
 
 (defun epl-update-nrefs-maybe-gc (refs)
-  (let ((old-nrefs (perl-interpreter-nrefs epl-interp))
+  (let ((old-nrefs (epl-interp-nrefs epl-interp))
 	(new-nrefs (hash-table-count refs)))
     (when (> old-nrefs new-nrefs)
       (let (elts)
 	(maphash (lambda (handle value)
 		   (setq elts (cons (format "%d," handle) elts)))
 		 refs)
-	(epl-send-message "&cb_free_refs_except(" elts ")")
-	(epl-loop))
-      (perl-interpreter-set-nrefs epl-interp new-nrefs)
+	(epl-send-and-receive "&cb_free_refs_except(" elts ")"))
+      (epl-interp-set-nrefs epl-interp new-nrefs)
       (- old-nrefs new-nrefs))))
 
+;; Send an UNREF type message promising never again to refer to this handle.
 (defun epl-free-handle (handle)
-  (when (not (eq (gethash handle (perl-interpreter-refs epl-interp) 'epl-nope)
+  (when (not (eq (gethash handle (epl-interp-refs epl-interp) 'epl-nope)
 		 'epl-nope))
-    (perl-interpreter-set-nrefs epl-interp
-				(1- (perl-interpreter-nrefs epl-interp)))
-    (remhash handle (perl-interpreter-refs epl-interp))
-    (epl-send-message (format "&cb_free_refs(%d)" handle))
-    (epl-loop)))
+    (epl-interp-set-nrefs epl-interp
+			  (1- (epl-interp-nrefs epl-interp)))
+    (remhash handle (epl-interp-refs epl-interp))
+    (epl-send-and-receive (format "&cb_unref(%d)" handle))))
 
 (defun perl-free-refs (&rest refs)
-  "Release any REFS that reference Perl data.
-This happens automatically if Emacs supports weak hash tables, as GNU
-Emacs 21 does."
+  "Release references to Perl data.
+This happens automatically if Emacs supports weak hash tables, as XEmacs
+21 and GNU Emacs 21 do."
   (while refs
     (let ((ref (car refs)))
       (if (perl-value-p ref)
@@ -514,15 +587,15 @@ Emacs 21 does."
 
 (defun perl-gc (&optional purge)
   "Release any Perl references that have been garbage-collected.
-This happens automatically if Emacs supports weak hash tables, as GNU
-Emacs 21 does.  See `perl-free-ref'.
+This happens automatically if Emacs supports weak hash tables, as XEmacs
+21 and GNU Emacs 21 do.  See `perl-free-refs'.
 
 If PURGE is true (interactively, with prefix arg), repeatedly call
 `garbage-collect' and release Perl references until all reference chains
 are freed."
   (interactive "P")
   (let* ((epl-interp perl-interpreter)
-	 (refs (perl-interpreter-refs epl-interp)))
+	 (refs (epl-interp-refs epl-interp)))
     (if purge
 	(while (progn
 		 (garbage-collect)
@@ -534,57 +607,48 @@ are freed."
 The new table uses `equal' as its test."
   (let ((h (make-hash-table :test 'equal)))
     (while namevals
-      (puthash (car namevals) (car (cdr namevals)) h)
+      (epl-puthash (car namevals) (car (cdr namevals)) h)
       (setq namevals (cdr (cdr namevals))))
     h))
 
-;; Enter Lisp from Perl.  Like perlmacs_funcall().
-(defun epl-return (func)
-  (let (done)
-    (unwind-protect
-	(condition-case err
-	    (progn
-	      (epl-send-message "&cb_return(" (funcall func) ")")
-	      (setq done t))
-	  (error (setq done t)
-		 (epl-die err)))
-      (or done (epl-send-message "&cb_throw()")))))
-
-;; This is function is separated from `epl-return' for the purpose of
-;; setting breakpoints.
-(defun epl-die (err)
+;; This function is a good place to set a breakpoint.
+(defun epl-serialize-exception (err)
+  ;; If the error originated from Perl, strip off our outer wrappings.
   (if (eq (car err) 'perl-error)
-      (epl-send-message "&cb_propagate(" (epl-serialize (cdr err)) ")")
-    (let ((string (error-message-string err)))
-      (epl-send-message "&cb_die("
-			(epl-serialize string)
-			"," (epl-serialize err)
-			")"))))
+      (epl-serialize (car (cdr err)))
+    ;; Supposing it is a Java error (for instance).  Let's say Java called
+    ;; Perl, Perl called us, we called Java, and Java threw us err.
+    ;; We would like to give it to Perl in a form that Perl will recognize
+    ;; as Javonic and be able to unwrap for Java just as we unwrap Perlish
+    ;; exceptions for Perl.
+    ;; Answer: We'll cross that bridge when we come to it.
+    ;; Assume err was signaled by Lisp.
+    (list (epl-serialize (error-message-string err)) ","
+	  (epl-serialize err))))
 
-(defun epl-cb-funcall (args)
-  (epl-return (lambda ()
-		(epl-serialize (apply 'funcall args)))))
+(defun epl-cb-call (args)
+  (epl-serialize (apply 'funcall args)))
 
-(defun epl-cb-funcall-raw (args)
-  (epl-return (lambda ()
-		(epl-serialize-opaque (apply 'funcall args)))))
+(defun epl-cb-call-void (args)
+  (apply 'funcall args)
+  nil)
 
-(defun epl-cb-unwrap (object)
-  (epl-return (lambda ()
-		(epl-serialize object))))
+(defun epl-cb-call-raw (args)
+  (epl-serialize-opaque (apply 'funcall args)))
 
-(defun epl-cb-wrap (object)
-  (epl-return (lambda ()
-		(epl-serialize-opaque object))))
+;; Passed to epl-cb-call and epl-cb-call-raw to implement wrap and
+;; unwrap operations.
+(defun epl-echo-one-arg (object)
+  object)
 
-(defun epl-cb-error (err)
-  (signal 'perl-error (list err)))
+(defun epl-cb-raise (err)
+  (throw 'epl-reply (list 'propagate 'perl-error err)))
 
 (defun epl-cb-propagate (err)
-  (apply 'signal err))
+  (throw 'epl-reply (cons 'propagate err)))
 
-(defun epl-cb-exit (arg)
-  (kill-emacs arg))
+(defun epl-cb-pop (unused)
+  (throw 'epl-reply '(pop)))
 
 ;; Serialization state.
 (defun epl-ss-new () (vector (make-hash-table :test 'eq) nil t))
@@ -599,7 +663,7 @@ The new table uses `equal' as its test."
 
 ;; perl-ref: [perl-ref-tag VALUE]
 ;; A SCALAR ref.
-(defun epl-cb-ref-new (value) (vector 'perl-ref-tag value))
+(defun epl-cb-ref (value) (vector 'perl-ref-tag value))
 (defun perl-ref-p (object)
   (and (vectorp object)
        (= (length object) 2)
@@ -607,7 +671,7 @@ The new table uses `equal' as its test."
 (defmacro perl-ref-value (ref) (list 'aref ref 1))
 (defmacro perl-ref-set-value (ref value) (list 'aset ref 1 value))
 
-(defun epl-cb-wrap-coderef (handle)
+(defun epl-cb-coderef (handle)
   `(lambda (&rest perl-coderef-tag)
      (apply 'perl-call
 	    ,(epl-cb-handle-to-perl-value handle)
@@ -645,7 +709,7 @@ The new table uses `equal' as its test."
 		  (cons (epl-fixup (epl-ss-pos state) seen)
 			(epl-ss-fixup state)))
 		 nil)
-	     (puthash value (epl-ss-pos state) (epl-ss-seen state))
+	     (epl-puthash value (epl-ss-pos state) (epl-ss-seen state))
 	     (cond ((consp value)        (epl-serialize-cons value state))
 		   ((perl-ref-p value)   (epl-serialize-ref value state))
 		   ((vectorp value)      (epl-serialize-vector value state))
@@ -727,40 +791,41 @@ The new table uses `equal' as its test."
 	  (epl-object-to-handle value)))
 
 (defun epl-object-to-handle (object)
-  (let ((handle (perl-interpreter-next-handle epl-interp)))
-    (perl-interpreter-set-next-handle epl-interp (1+ handle))
-    (puthash handle object (perl-interpreter-gcpro epl-interp))
+  (let ((handle (epl-interp-next-handle epl-interp)))
+    (epl-interp-set-next-handle epl-interp (1+ handle))
+    (epl-puthash handle object (epl-interp-gcpro epl-interp))
     handle))
 
-(defun epl-cb-unref-objects (&rest handles)
+(defun epl-cb-unref (handles)
   (while handles
-    (remhash (car handles) (perl-interpreter-gcpro epl-interp))
-    (setq handles (cdr handles))))
+    (remhash (car handles) (epl-interp-gcpro epl-interp))
+    (setq handles (cdr handles)))
+  ;; XXX probably should do a perl-gc here
+  )
 
 (defun epl-cb-handle-to-object (handle)
-  (gethash handle (perl-interpreter-gcpro epl-interp)))
+  (gethash handle (epl-interp-gcpro epl-interp)))
 
 (defun perl-to-lisp (object)
   "Return a deep copy of OBJECT replacing Perl data with Lisp equivalents.
-Arrayrefs are converted to a lists.  References to arrayrefs become vectors.
+Arrayrefs are converted to lists.  References to arrayrefs become vectors.
 Coderefs become lambda expressions.
 
 If the object is not Perl data, it is returned unchanged.  See `perl-value-p'."
   (if (perl-value-p object)
       (let ((epl-interp (perl-value-interpreter object)))
-	(epl-send-message (format "&cb_handle_to_ref(%d)"
-				  (perl-value-handle object)))
-	(epl-loop))
+	(epl-send-and-receive (format "&cb_handle_to_ref(%d)"
+				      (perl-value-handle object))))
     object))
 
 ;;;###autoload
 (defun perl-wrap (object)
   "Return OBJECT as a Perl object of class Emacs::Lisp::Object."
   (let ((epl-interp (epl-init)))
-    (epl-send-message "&cb_ref_to_handle("
-		      (epl-serialize-opaque object)
-		      ")")
-    (epl-cb-handle-to-perl-value (epl-loop))))
+    (epl-cb-handle-to-perl-value
+     (epl-send-and-receive "&cb_ref_to_handle("
+			   (epl-serialize-opaque object)
+			   ")"))))
 
 
 (provide 'perl-core)

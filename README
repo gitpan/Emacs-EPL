@@ -1,20 +1,24 @@
-31 January 2001
+4 February 2001
 
-This is EPL version 0.4.  EPL (Emacs Perl) is a replacement for
-Perlmacs that uses pipes instead of embedding.  This allows it to work
-with different Emacs, XEmacs, and Perl versions without
-recompilation.  See http://john-edwin-tobey.org/perlmacs/ for news and
-the latest version.
+This is EPL version 0.5.  EPL (Emacs Perl) lets you control Emacs and
+XEmacs using Perl as an alternative to Emacs Lisp.
+
+EPL is a replacement for Perlmacs that uses pipes instead of
+embedding.  This allows it to work with different Emacs, XEmacs, and
+Perl versions without recompilation.  See
+http://john-edwin-tobey.org/perlmacs/ for news and the latest version.
 
   This program is distributed in the hope that it will be useful, but
   WITHOUT ANY WARRANTY; without even the implied warranty of
   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
   General Public License for more details.
 
-EPL requires at least Perl 5.005 and prefers 5.6.0.  It is known to
-work with Emacs 20 and XEmacs 21, but with the caveat that Lisp
-references to Perl data must be freed explicitly or result in a memory
-leak.  Under GNU Emacs 21, this restriction will not exist.
+EPL requires at least Perl 5.004 and prefers 5.005 or higher.  It is
+known to work with Emacs 20 and XEmacs 21, but with the caveat that
+Lisp references to Perl data must be freed explicitly or result in a
+memory leak.  Under GNU Emacs 21.0.x, this restriction does not exist.
+I hope to get rid of it with XEmacs too someday.  GNU Emacs 20
+probably will always have it.
 
 
 INSTALLATION
@@ -37,7 +41,9 @@ change directory to Emacs-EPL-N.N, and run these commands:
     make
     make install
 
-Then copy the Lisp files from the elisp directory to where Emacs looks
+Do not run `make test' unless you have GNU Emacs 21 installed.
+
+Then copy the Lisp files from the lisp directory to where Emacs looks
 for libraries.  Byte-compile them if you like.  Load perl.el in Emacs
 with `M-x load-file' or the equivalent.  Refer to the Emacs manual for
 details about loading libraries and byte-compilation.

@@ -6,36 +6,61 @@ use 5.004;  # tied handles
 
 use Emacs::Lisp ();
 use Carp ();
-use Tie::Handle;
+use Tie::Handle ();
+use Exporter ();
 
 use strict;
-use vars qw ( $VERSION @ISA $old_warner );
+use vars qw ( $VERSION @ISA $stuff_tied $old_warner @EXPORT );
 
+$VERSION = '1.01';
 
-$VERSION = '1.0';
+@EXPORT = ('main', 'exit');
+# XXX also need to redefine `open' to use Emacs locking.
+# To think about: chdir, fork, exec, sleep, umask, wait, waitpid,
+# Cwd.pm stuff, sysopen, select, anything else that blocks,
+# kill (detect our pid or emacs's), chroot, alarm, ....
+# Hey, if we do all of these, we can call this a port of Perl to the
+# Emacs operating system!
 
 sub import {
-    my $callpkg = caller;
+    if (scalar (@_) == 1) {
+	tie_stuff ();
+    }
+    for (my $i = 1; $i < scalar (@_); $i++) {
+	if ($_[$i] eq ':tie') {
+	    tie_stuff ();
+	}
+	else {
+	    next;
+	}
+	splice (@_, $i, 1);
+    }
+    local @ISA = ('Exporter');
+    Emacs->export_to_level (1, @_);
+}
+
+sub tie_stuff {
+    return if $stuff_tied;
     tie (*STDIN, 'Emacs::Minibuffer');
+    *::standard_output = *::standard_output;  # Avoid warnings.
     tie (*STDOUT, 'Emacs::Stream', \*::standard_output);
     tie (*STDERR, 'Emacs::Minibuffer');
     $old_warner = $SIG{'__WARN__'};
     $SIG{'__WARN__'} = 'Emacs::do_warn';
     tie (%ENV, 'Emacs::ENV');
     tie (%SIG, 'Emacs::SIG');
-
-    no strict 'refs';
-    *{"$callpkg\::main"} = \&main;  # XXX make optional via @EXPORT.
-    # XXX Also need to redefine `open' to use Emacs locking.
+    $stuff_tied = 1;
 }
 
 sub cleanup {
+    return if ! $stuff_tied;
     untie (%SIG) if ref (tied (%SIG)) eq 'Emacs::SIG';
     untie (%ENV) if ref (tied (%ENV)) eq 'Emacs::ENV';
     $SIG{'__WARN__'} = $old_warner if $SIG{'__WARN__'} eq 'Emacs::do_warn';
     untie (*STDERR) if ref (tied (*STDERR)) eq 'Emacs::Minibuffer';
     untie (*STDOUT) if ref (tied (*STDOUT)) eq 'Emacs::Stream';
     untie (*STDIN) if ref (tied (*STDIN)) eq 'Emacs::Minibuffer';
+    $stuff_tied = 0;
 }
 
 sub main {
@@ -54,6 +79,15 @@ sub do_warn {
     my $msg = shift;
     chomp $msg;
     print STDERR $msg;
+}
+
+sub exit {
+    my ($status) = @_;
+
+    # XXX Should detect whether Emacs is running.
+    local $SIG{'__WARN__'} = 'DEFAULT';
+    eval { &kill_emacs ($status); };
+    CORE::exit ($status);
 }
 
 
@@ -294,7 +328,6 @@ Reading a line from Perl's C<STDIN> filehandle causes a string to be
 read from the minibuffer with the prompt C<"Enter input: ">.  To show
 a different prompt, use:
 
-    use Emacs::Lisp;
     $string = &read_string ("Prompt: ");
 
 =head2 STDOUT

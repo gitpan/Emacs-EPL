@@ -1,8 +1,8 @@
 # Makefile for EPL (Emacs Perl) XEmacs package
-# In parent directory, make sure ../../XEmacs.rules exists, apply the
-# patch at the end of this file to ../../package-compile.el, execute
-# "make -f xemacs/Makefile binkit", and ignore the error about
-# "Cannot open load file: package-info.el".
+# In parent directory, make sure ../../XEmacs.rules and
+# ../../Local.rules exist, apply the patch at the end of this file to
+# ../../package-compile.el, execute "make -f xemacs/Makefile dist",
+# and ignore the error about "Cannot open load file: package-info.el".
 
 # Copyright (C) 2001 by John Tobey,
 # jtobey@john-edwin-tobey.org.  All rights reserved.
@@ -22,8 +22,10 @@
 #   Free Software Foundation, Inc., 59 Temple Place, Suite 330, Boston,
 #   MA 02111-1307  USA
 
-VERSION = 1.00
-AUTHOR_VERSION = $(shell perl -nle 'print $$1 if /defconst epl-version "([.\d]*)/' lisp/epl.el)
+VERSION = 1.01
+AUTHOR_VERSION = $(shell perl -nle \
+	'print $$1, exit if /^\(defconst epl-version "([.\d]*).*\)/' \
+	lisp/epl.el)
 MAINTAINER = John Tobey <jtobey@john-edwin-tobey.org>
 PACKAGE = epl
 PKG_TYPE = regular

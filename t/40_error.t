@@ -73,17 +73,23 @@ use Emacs::Lisp;
     },
     sub {
 	eval { &perl_eval ("goto L;") };
-	return ($@ =~ /label/, $@);
+	return (0, $@);
       L:
-	# actually, it wouldn't be bad behavior to come here, but it's
-	# not currently supported.
-	#return (0, $@);
 	return (1, $@);
     },
     sub {
-	local $x = 0;
+	local $x = 0;  # btw, $x is tied from above.
+	# Cover up "Exiting (eval|subroutine) via last" because that
+	# is just the kind of shenanigans we are testing for.
 	local $^W = 0;
-	eval { for (1..10) { &perl_eval (q($x = $_; last if $_>5)) } };
+	eval {
+	    # The label is necessary, because otherwise Perl thinks
+	    # "last" refers to the message loop.  Or something.
+	  F:
+	    for (1..10) {
+		&perl_eval (q($x = $_; last F if $_>5));
+	    }
+	};
 	($x == 6 && $@ =~ /last/, "$x $@");
     },
 
@@ -113,14 +119,12 @@ for my $test (@tests) {
     report &$test();
 }
 
-# With perl 5.6.0, the argument of the first "die" in the program is
-# printed here, followed by ".\n".  Is it me or perl?
-
-# This "fixes" it.  Ugh!
-close STDERR;
-
 END {
     &garbage_collect;
+    # This fails with Perl 5.005 due to EPL.pm thinking the argument to
+    # error() should be a Lisp integer.  Changing it to something with
+    # non-digits removes the error, but I like to keep it here to remind
+    # me of what has to be fixed for 5.005.
     eval { &error ("58209") };
     report ($@ =~ /^58209/ ? 1 : 0, $@);
     &garbage_collect;

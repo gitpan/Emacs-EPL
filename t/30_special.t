@@ -52,4 +52,4 @@ for my $test (@tests) {
     print (&$test() ? "ok $test_number\n" : "not ok $test_number\n");
     $test_number ++;
 }
-END { &garbage_collect; }
+END { &garbage_collect; 0; }

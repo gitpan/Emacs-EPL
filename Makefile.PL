@@ -23,7 +23,7 @@ use ExtUtils::MakeMaker;
 
 WriteMakefile (
 	       'NAME'  => 'Emacs::EPL',
-	       'VERSION_FROM' => 'lib/Emacs/EPL.pm',
+	       'VERSION' => get_version_from_el (),
 	      );
 
 warn ("
@@ -33,9 +33,15 @@ To run `make test', you need GNU Emacs 21.  Copy the files in the elisp
 directory to where Emacs can find them, and set the EMACS environment
 variable to Emacs' invocation name if other than `emacs'.
 
-The test script `40_error.t' is known to fail.
-
 ");
+
+sub get_version_from_el {
+    open (EL, "lisp/epl.el") || die ("Can't read lisp/epl.el: $!");
+    while (<EL>) {
+	return $1 if /^\(defconst epl-version "(.*?)"/;
+    }
+    die ("epl-version not defined in lisp/epl.el");
+}
 
 sub MY::postamble {
     return q(

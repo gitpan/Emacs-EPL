@@ -1,3 +1,8 @@
+2001-02-04  John Tobey  <jtobey@john-edwin-tobey.org>
+
+	* Makefile.PL: Perl 5.005 passes the test suite now.  5.004 and
+	possibly older Perls work but do not support setq.
+
 2001-01-31  John Tobey  <jtobey@john-edwin-tobey.org>
 
 	* MANIFEST: Add COPYING so I'm no longer a liar.

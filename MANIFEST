@@ -7,6 +7,7 @@ t/20_tie.t
 t/30_special.t
 t/40_error.t
 lisp/epl.el
+lisp/epl-compat.el
 lisp/perl-core.el
 lisp/perl.el
 lisp/epl-server.el
