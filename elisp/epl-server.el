@@ -28,7 +28,7 @@
 	      1   ;next-handle
 	      (make-hash-table :test 'eq :weakness 'value) ;refs
 	      0   ;nrefs
-	      'ready ;status
+	      'running ;status
 	      ))
 
 (setq epl-interp-map (make-hash-table :test 'eq))

@@ -699,6 +699,8 @@ strings.
     perl-call-raw         SUB &optional CONTEXT &rest ARGS
     make-perl-interpreter &rest ARGV
     perl-destruct         &optional INTERPRETER
+    perl-gc               &optional PURGE
+    perl-free-refs        &rest REFS
 
 The following Lisp variables affect the Perl interpreter and have doc
 strings accessible via C<C-h f E<lt>variable-nameE<gt> RET>.  They
@@ -990,8 +992,6 @@ message which may propose an alternative.
 
 =item catch SYMBOL,CODE
 
-XXX This is broken in EPL.
-
 Evaluate CODE in a Lisp C<catch> construct.  At any point during
 CODE's execution, the C<throw> function may be used to return control
 to the end of the C<catch> block.  For example:
@@ -1154,6 +1154,13 @@ me.
 
 =over 4
 
+=item * Emacs::Lisp doesn't work outside of XEmacs or GNU Emacs 20.
+
+If a Perl program not under the control of an Emacs process uses
+Emacs::Lisp functions, Emacs::Lisp tries to run Emacs in batch mode.
+This only works with GNU Emacs 21 beta, not Emacs 20 or XEmacs.  This
+can probably be fixed, but I don't know what the problem is yet.
+
 =item * Within Lisp code, everything defaults to package `main'.
 
 It would perhaps be best to give the Lisp evaluation environment the
@@ -1163,11 +1170,6 @@ notion of a "current package" such as Perl has.
 
 Perl-to-Lisp works okay.  Support is partly there.
 
-=item * You can sometimes destroy a running Perl interpreter.
-
-perl-destruct needs to be inhibited for every interpreter that is
-currently executing code, not just the innermost one.
-
 =item * Symbols whose names contain :: or '
 
 How can we convert them to and from Perl?
@@ -1176,9 +1178,9 @@ How can we convert them to and from Perl?
 
 I haven't tried, but they probably destabilize things.
 
-=item * 'throw' in Lisp eval
+=item * 'signal' in Lisp eval
 
-The throw/catch example above fails.
+One of the test scripts fails in 'signal'.
 
 =item * High IPC overhead
 
@@ -1199,7 +1201,8 @@ expressions?
 =item * Need a way to specify scalar conversion type.
 
 You should be able to decide whether a scalar becomes a Lisp integer,
-float, or string.
+float, or string.  Using Perl 5.005 sometimes gives different results
+from Perl 5.6.
 
 =back
 
@@ -1239,9 +1242,10 @@ A chain of Perl -> Lisp -> ... -> Perl references may take several
 garbage collection cycles to be freed.  It is therefore probably best
 to keep the number and complexity of such references to a minimum.
 
-(To the extent that the Perl-to-Emacs interface is independent of the
-Lispish implementation of Emacs, these performance issues are fixable
-in principle by reimplementing Emacs' internals.)
+To make matters worse, if Emacs does not support weak hash tables,
+Lisp must explicitly free its references to Perl data.  Neither GNU
+Emacs 20 nor XEmacs 21 support weak hash tables, but Perlmacs solves
+this problem by adding necessary support.
 
 =back
 

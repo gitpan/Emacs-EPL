@@ -7,7 +7,7 @@ sub my_eval { return (eval (shift)); }
 
 require 5.000;  # well, it's a goal anyway.
 
-$VERSION = '0.002';
+$VERSION = '0.003';
 sub version_check {
     if ($_[0] != $VERSION) {
 	die ("Version mismatch: epl.el $_[0] vs. Emacs::EPL $VERSION");
@@ -234,7 +234,7 @@ sub REF::epl_print_as_lisp {
 	print( ",(epl-cb-ref-new `");
 	local $Emacs::current->{'pos'}
 	    = "(perl-ref-value $$Emacs::current{'pos'})";
-	print_recursive ($$value);
+	print_recursive ($value);
 	print( ")");
     }
 }
@@ -444,15 +444,27 @@ sub cb_free_refs_except {
     return undef;
 }
 
+# XXX Handle the case where more than one Emacs references the same object.
+sub cb_free_refs {
+    while (@_) {
+	my $handle = shift;
+	my $ref = delete ($$handle_to_opaque {$handle});
+	if ($ref) {
+	    delete ($$id_to_handle { get_ref_id ($ref) });
+	}
+    }
+    return undef;
+}
+
 sub cb_return {
     ($$Emacs::current {'retval'}) = @_;
     die ("EPL return\n");
 }
 
-# This gets error data as it second arg... but ignores it currently.
 sub cb_die {
-    my ($err) = @_;
-    die ("Lisp error: $err");
+    my $msg = shift;
+    $$Emacs::current {'err'} = shift;
+    die ("Lisp error: $msg");
 }
 
 sub cb_propagate {
@@ -568,6 +580,8 @@ END {
     }
 }
 
+#$SIG{'__DIE__'} = sub { warn (@_); die (@_); };
+
 sub import {
     my ($server);
 
@@ -591,6 +605,8 @@ sub import {
 	open (IN, "<&=" . fileno (STDIN))
 	    || die ("Can't fdopen stdin: $!");
 	close (STDERR);  # XXX
+#	open (ERR, ">/home/jtobey/Emacs/log");  # XXX
+#	select ((select (ERR), $| = 1)[0]);
     }
 }
 
@@ -605,7 +621,7 @@ sub loop {
 				  'out' => *OUT,
 				  'frame' => 'lisp',
 				 );
-    return loop_1 ();
+    loop_1 ();
 }
 
 sub loop_1 {
@@ -620,6 +636,7 @@ sub loop_1 {
 	my ($input, $output, $len, $caught, $ofh);
 
 	local ($$Emacs::current {'retval'});
+	local ($$Emacs::current {'err'});
 
 	$len = readline ($in);
 	$len =~ s/^(?:Lisp expression: )+//;
@@ -628,25 +645,25 @@ sub loop_1 {
 	read ($in, $input, $len) == $len || die;
 	{
 	    local ($@);
-	    local $$Emacs::current {'frame'} = 'lisp';
-	    # XXX trap 'goto', 'last', 'next', 'return', 'redo'?
+	    # XXX trap 'goto', 'last', 'next', 'return', 'redo', 'exit'?
 	    $output = my_eval ($input);
 	    $caught = $@;
 	}
 	if ($caught) {
+	    if ($caught eq "EPL skip\n") {
+		next;
+	    }
+	    if ($caught eq "EPL throw\n") {
+		die ("EPL skip\n");
+	    }
 	    if ($$Emacs::current {'frame'} eq 'perl') {
 		if ($caught eq "EPL return\n") {
 		    return ($$Emacs::current {'retval'});
 		}
 		die ($caught);
 	    }
-	    if ($caught eq "EPL throw\n") {
-		next;
-	    }
-	    elsif ($caught =~ s/^Lisp error: //) {
-		# XXX Should save the error object in cb_die() and
-		# propagate it here.
-		send_message ('propagate', [\*::error, $caught]);
+	    if (defined ($$Emacs::current {'err'})) {
+		send_message ('propagate', $$Emacs::current {'err'});
 	    }
 	    else {
 		send_message ('error', $caught);
@@ -657,17 +674,13 @@ sub loop_1 {
     }
 }
 
-sub loop_2 {
-    local $$Emacs::current {'frame'} = 'perl';
-    return loop_1 ();
-}
-
 sub Emacs::Lisp::funcall {
     $Emacs::current ||= Emacs->start;
     local $Emacs::current = $Emacs::current;
+    local $$Emacs::current {'frame'} = 'perl';
     # XXX Check wantarray to avoid extra refs/conversions in scalar/void.
     send_message ('funcall', \@_);
-    return loop_2 ();
+    return loop_1 ();
 }
 
 sub Emacs::Lisp::Object::funcall {
@@ -679,9 +692,10 @@ sub Emacs::Lisp::Object::funcall {
 	$emacs = $Emacs::current || Emacs->start;
     }
     local $Emacs::current = $emacs;
+    local $$Emacs::current {'frame'} = 'perl';
     # XXX Check wantarray to avoid extra refs/conversions in scalar/void.
     send_message ('funcall-raw', \@_);
-    return loop_2 ();
+    return loop_1 ();
 }
 
 sub Emacs::Lisp::Object::DESTROY {
@@ -690,21 +704,23 @@ sub Emacs::Lisp::Object::DESTROY {
     local ($@);
     eval {  # Ignore errors.
 	local $Emacs::current = $emacs;
-	send_message ('unref-object', $handle);
+	send_message ('unref-objects', $handle);
     };
 }
 
 sub Emacs::Lisp::Object::to_perl {
     my ($emacs, $handle) = @ { $_[0] };
     local $Emacs::current = $emacs;
+    local $$Emacs::current {'frame'} = 'perl';
     send_message ('unwrap', $_[0]);
-    return loop_2 ();
+    return loop_1 ();
 }
 
 sub Emacs::Lisp::lisp {
     $Emacs::current ||= Emacs->start;
+    local $$Emacs::current {'frame'} = 'perl';
     send_message ('wrap', $_[0]);
-    return loop_2 ();
+    return loop_1 ();
 }
 
 1;

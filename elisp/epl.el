@@ -17,7 +17,7 @@
 ;; Boston, MA 02111-1307, USA.
 
 
-(defconst epl-version "0.2" "Version numbers of EPL.")
+(defconst epl-version "0.3" "Version numbers of EPL.")
 
 ;; Gawd this would be so much easier in Perl.  :-)
 (defconst epl-major-version
@@ -49,6 +49,10 @@ If `stderr', send them to the standard error stream.")
 ;; Compatibility.  XXX Should we even be using string-bytes??
 (or (fboundp 'string-bytes)
     (fset 'string-bytes 'length))
+(or (fboundp 'make-hash-table)
+    (require 'cl))
+(or (fboundp 'puthash)
+    (fset 'puthash 'cl-puthash))
 
 (put 'perl-error 'error-conditions '(perl-error error))
 (put 'perl-error 'error-message "Perl error")
@@ -167,9 +171,14 @@ If no arg is given, shut down the current Perl interpreter."
 		     (delete-process (perl-interpreter-out interpreter))
 		     (kill-buffer (perl-interpreter-buffer interpreter))
 		     (perl-interpreter-set-status interpreter 'destroyed))
-		 (error nil)))
+		 (error nil))
+	       (perl-interpreter-set-status interpreter 'destroyed))
 	      ((eq status 'destroyed) nil)
-	      (t (error "Attempt to kill Perl from within Perl; use `M-x top-level RET' first")))))
+	      (t (error
+		  (format "Attempt to kill Perl from within Perl%s"
+			  (if (processp (perl-interpreter-out interpreter))
+			      "; use `M-x top-level RET' first"
+			    "")))))))
   (if (eq perl-interpreter interpreter)
       (setq perl-interpreter nil)))
 
@@ -189,11 +198,12 @@ If no arg is given, shut down the current Perl interpreter."
 (defun epl-filter (proc string)
   (save-excursion
     (let ((interp (gethash proc epl-interp-map)))
-      (set-buffer (perl-interpreter-buffer interp))
-      ;; Insert the text, advancing the process marker.
-      (goto-char (point-max))
-      (insert string)
-      (set-marker (process-mark proc) (point)))))
+      (when (perl-interpreter-p interp)
+	(set-buffer (perl-interpreter-buffer interp))
+	;; Insert the text, advancing the process marker.
+	(goto-char (point-max))
+	(insert string)
+	(set-marker (process-mark proc) (point))))))
 
 ;; perl-value type: [perl-value-tag INTERPRETER HANDLE]
 
@@ -392,14 +402,18 @@ sub name or coderef.  The remaining arguments are treated the same as in
 	(epl-send-string out (apply 'concat (nreverse (car stack)))))))
 
 ;; Answer requests until we get our reply or an error.
-;; XXX Set status to 'running or something for perl-destruct.
 (defun epl-loop ()
-  (catch 'epl-return
-    (while t
-      (let ((form (read (perl-interpreter-in epl-interp))))
-	(epl-debug "\n<<< ")
-	(epl-debug form)
-	(eval form)))))
+  (let ((status (perl-interpreter-status epl-interp)))
+    (unwind-protect
+	(progn
+	  (perl-interpreter-set-status epl-interp 'running)
+	  (catch 'epl-return
+	    (while t
+	      (let ((form (read (perl-interpreter-in epl-interp))))
+		(epl-debug "\n<<< ")
+		(epl-debug form)
+		(eval form)))))
+      (perl-interpreter-set-status epl-interp status))))
 
 ;; "epl-cb-" functions are called by evalled messages.
 
@@ -432,10 +446,29 @@ sub name or coderef.  The remaining arguments are treated the same as in
       (perl-interpreter-set-nrefs epl-interp new-nrefs)
       (- old-nrefs new-nrefs))))
 
+(defun epl-free-handle (handle)
+  (when (not (eq (gethash handle (perl-interpreter-refs epl-interp) 'epl-nope)
+		 'epl-nope))
+    (perl-interpreter-set-nrefs epl-interp
+				(1- (epl-interpreter-nrefs epl-interp)))
+    (remhash handle (perl-interpreter-refs epl-interp))
+    (epl-send-message (format "&cb_free_refs(%d)" handle))
+    (epl-loop)))
+
+(defun perl-free-refs (&rest refs)
+  "Release any REFS that reference Perl data.
+This happens automatically if Emacs supports weak hash tables, as GNU
+Emacs 21 does."
+  (while refs
+    (let ((ref (car refs)))
+      (if (perl-value-p ref)
+	  (let ((epl-interp (perl-value-interpreter ref)))
+	    (epl-free-handle (perl-value-handle ref)))))))
+
 (defun perl-gc (&optional purge)
   "Release any Perl references that have been garbage-collected.
-This function is called automatically if Emacs supports weak hash tables,
-as Emacs 21 and XEmacs 20(?) and above do.
+This happens automatically if Emacs supports weak hash tables, as GNU
+Emacs 21 does.  See `perl-free-ref'.
 
 If PURGE is true (interactively, with prefix arg), repeatedly call
 `garbage-collect' and release Perl references until all reference chains
@@ -478,9 +511,7 @@ The new table uses `equal' as its test."
     (let ((string (error-message-string err)))
       (epl-send-message "&cb_die("
 			(epl-serialize string)
-			(if (eq (car err) 'error)
-			    nil
-			  (list "," (epl-serialize err)))
+			"," (epl-serialize err)
 			")"))))
 
 (defun epl-cb-funcall (args)
@@ -651,8 +682,10 @@ The new table uses `equal' as its test."
     (puthash handle object (perl-interpreter-gcpro epl-interp))
     handle))
 
-(defun epl-cb-unref-object (handle)
-  (remhash handle (perl-interpreter-gcpro epl-interp)))
+(defun epl-cb-unref-objects (&rest handles)
+  (while handles
+    (remhash (car handles) (perl-interpreter-gcpro epl-interp))
+    (setq handles (cdr handles))))
 
 (defun epl-cb-handle-to-object (handle)
   (gethash handle (perl-interpreter-gcpro epl-interp)))
