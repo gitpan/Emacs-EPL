@@ -1,0 +1,15 @@
+lib/Emacs/EPL.pm
+lib/Emacs/Lisp.pm
+lib/Emacs.pm
+t/00_boot.t
+t/10_conv.t
+t/20_tie.t
+t/30_special.t
+t/40_error.t
+elisp/epl.el
+elisp/perl-core.el
+elisp/perl.el
+elisp/epl-server.el
+README
+Makefile.PL
+MANIFEST

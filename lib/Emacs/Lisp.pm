@@ -20,8 +20,24 @@ my (%special);
 require Exporter;
 
 $VERSION = '0.93';
-if (defined (&Emacs::boot_Emacs)) {
-    Emacs::boot_Emacs ($VERSION);
+if (! defined (&Emacs::Lisp::funcall)
+    || ! defined (&Emacs::Lisp::Object::funcall))
+{
+    if (defined (&Emacs::boot_Emacs)) {
+	Emacs::boot_Emacs ($VERSION);
+    }
+    else {
+	require Emacs::EPL;
+    }
+}
+
+# Really don't want to leave the funcall()s undefined, because they
+# are called by AUTOLOAD, and infinite recursion in AUTOLOAD is a
+# quick way to melt down a system.
+if (! defined (&Emacs::Lisp::funcall)
+    || ! defined (&Emacs::Lisp::Object::funcall))
+{
+    Carp::croak ("funcall not defined");
 }
 
 # Closure generator shared by Emacs::Lisp::AUTOLOAD and
@@ -46,7 +62,7 @@ my $get_funcall_closure = sub {
 	Carp::croak ("`$function' not implemented$msg");
     }
     $function = \*{"::$function"};
-    $whose_funcall .= "::funcall";
+    $whose_funcall = \&{"$whose_funcall\::funcall"};
     *$fullname = sub {
 
 	# Switch to package main in case Lisp compiles any Perl code.
@@ -78,10 +94,10 @@ package Emacs::Lisp::Object;
 use vars qw ($AUTOLOAD);
 
 sub AUTOLOAD {
-    *$AUTOLOAD = $get_funcall_closure->(__PACKAGE__, $AUTOLOAD);
+    *$AUTOLOAD = &$get_funcall_closure (__PACKAGE__, $AUTOLOAD);
     goto &$AUTOLOAD;
 }
-sub can { &UNIVERSAL::can || $can->(__PACKAGE__, $_[1]) }
+sub can { &UNIVERSAL::can || &$can (__PACKAGE__, $_[1]) }
 
 sub is_nil	($) { defined $_[0]->null->to_perl }
 sub new		($$) { &to_lisp ($_[1]) }
@@ -89,11 +105,9 @@ sub new		($$) { &to_lisp ($_[1]) }
 
 package Emacs::Lisp::Variable;
 
-# XXX blessing globs in main:: ??!!
-sub TIESCALAR	{ return bless ($_[1], $_[0]); }
-sub FETCH	{ return &Emacs::Lisp::symbol_value; }
-sub STORE	{ return &Emacs::Lisp::set; }
-sub epl_print_as_lisp { &GLOB::epl_print_as_lisp; }
+sub TIESCALAR	{ return bless (\$_[1], $_[0]); }
+sub FETCH	{ return &Emacs::Lisp::symbol_value (${$_[0]}); }
+sub STORE	{ return &Emacs::Lisp::set (${$_[0]}, $_[1]); }
 
 
 package Emacs::Lisp::Plist;
@@ -186,7 +200,18 @@ package Emacs::Lisp;
 sub import {
     my @newlist = ();
     for my $i (1..$#_) {
-	next if $_[$i] !~ /([\$\@\%])(.*)/;
+	if ($_[$i] =~ m/^\d/) {
+	    # Exporter will try to call Emacs::Lisp->require_version if
+	    # we let it handle numeric arguments.  Rather than provide
+	    # a require_version sub (which would shadow a Lisp
+	    # require-version function), we emulate Exporter.
+	    if ($VERSION < $_[$i]) {
+		Carp::croak ("Emacs::Lisp $_[$i] required--this is only"
+			     . " version $VERSION (" . __FILE__ . ")");
+	    }
+	    next;
+	}
+	next if $_[$i] !~ /([\$\%])(.*)/;
 	my ($type, $name) = ($1, $2);
 	if ($type eq '%') {
 	    next if tied %$name;
@@ -245,10 +270,10 @@ sub t () { return \*::t; }
 sub nil () { return undef; }
 
 sub AUTOLOAD {
-    *$AUTOLOAD = $get_funcall_closure->(__PACKAGE__, $AUTOLOAD);
+    *$AUTOLOAD = &$get_funcall_closure (__PACKAGE__, $AUTOLOAD);
     goto &$AUTOLOAD;
 }
-sub can { return &UNIVERSAL::can || $can->(__PACKAGE__, $_[1]); }
+sub can { return &UNIVERSAL::can || &$can (__PACKAGE__, $_[1]); }
 
 %special =
     (
@@ -610,7 +635,7 @@ structures (described in L<perlref>) and objects (see L<perlobj>).
 
 =head2 Quick Start
 
-Run B<pmacs> and type:
+Run B<emacs -l perl> and type:
 
     C-x p e &insert ("hello!\n") RET
 
@@ -629,23 +654,36 @@ C<defun> and C<interactive> are used to create Emacs commands.
 
 =head1 EPL AND PERLMACS
 
-[WRITE ME]
+Perlmacs was (is?) a project that embedded a Perl interpreter into the
+Emacs binary so that it could run Lisp, Perl, or any combination of
+the two.  It uses Perl's C interface, which requires patching and
+recompiling Emacs.  As a result, each release is tied to a version of
+Emacs, it takes a lot of time and disk space to build, and it is not
+very portable.
+
+EPL (Emacs Perl) accomplishes most of what Perlmacs can do, but it
+does not suffer from the same drawbacks.  It uses unmodified Emacs and
+Perl and lets them work together through IPC (pipes).  This may make
+some tasks much slower, but it is much more convenient to install and
+upgrade, and it works with XEmacs as well as Emacs 21 betas.
+
+For the time being, this module attempts to support both Perlmacs and
+EPL.  The user-visible APIs are almost identical, except for EPL's
+lack of C<Emacs::main()>.
 
 
 =head1 LISP SUPPORT FOR PERL
 
-Perlmacs comes in the form of a patch of Emacs.  The patch adds some
-Perl support to the emacs executable and installs it as B<pmacs>.  The
-Emacs::Lisp module extends the core support by wrapping it in a
-Perl-like interface.
-
-Lisp code can check for Perl support using C<(featurep 'perl)>.
+Lisp code can check for Perl support using C<(require 'perl)>.  In
+Perlmacs, some of the Perl functions are built in, and others are
+defined in F<perl.el>.  When you use EPL, F<epl.el> substitutes for
+the built-in support, but the same F<perl.el> is used.
 
 =head2 Functions
 
-The following Lisp functions are part of Perlmacs proper and do not
-rely on the Emacs::Lisp module.  Use C<C-h f E<lt>function-nameE<gt>
-RET> within pmacs to see their doc strings.
+The following Lisp functions do not rely on the Emacs::Lisp module.
+Use C<C-h f E<lt>function-nameE<gt> RET> within Emacs to see their doc
+strings.
 
     perl-eval-expression  EXPRESSION
     perl-eval-region      START END
@@ -660,12 +698,13 @@ RET> within pmacs to see their doc strings.
     perl-eval-raw         STRING &optional CONTEXT
     perl-call-raw         SUB &optional CONTEXT &rest ARGS
     make-perl-interpreter &rest ARGV
-    perl-run              &optional INTERPRETER
     perl-destruct         &optional INTERPRETER
 
-Two Lisp variables affect the Perl interpreter and have doc strings
-accessible via C<C-h f E<lt>variable-nameE<gt> RET>.  They are:
+The following Lisp variables affect the Perl interpreter and have doc
+strings accessible via C<C-h f E<lt>variable-nameE<gt> RET>.  They
+are:
 
+    perl-interpreter-program
     perl-interpreter-args
     perl-interpreter
 
@@ -951,6 +990,8 @@ message which may propose an alternative.
 
 =item catch SYMBOL,CODE
 
+XXX This is broken in EPL.
+
 Evaluate CODE in a Lisp C<catch> construct.  At any point during
 CODE's execution, the C<throw> function may be used to return control
 to the end of the C<catch> block.  For example:
@@ -1118,18 +1159,6 @@ me.
 It would perhaps be best to give the Lisp evaluation environment the
 notion of a "current package" such as Perl has.
 
-=item * Perl references held by Lisp don't get garbage-collected.
-
-*** Implemented, but untested.
-
-It would be nice if Emacs Lisp had an `after-gc-hook'.  Barring that,
-I guess I'll be writing logic to decide when to check for unreferenced
-weak hash table entries and tell Perl to forget about them.
-
-=item * The Emacs.pm module no longer works.
-
-It can crash my system by eating memory.  I wish I knew why.
-
 =item * Circular Lisp data structures cannot be converted to Perl.
 
 Perl-to-Lisp works okay.  Support is partly there.
@@ -1149,17 +1178,7 @@ I haven't tried, but they probably destabilize things.
 
 =item * 'throw' in Lisp eval
 
-Ditto.
-
-=item * Conversion of integers too big for Lisp wraps around.
-
-They should be made into floats.  We need to know the range of Emacs
-ints.
-
-=item * Multibyte characters
-
-Emacs has had them for some time.  Now Perl's UTF-8 is stabilizing.
-It's time the two met.
+The throw/catch example above fails.
 
 =item * High IPC overhead
 
@@ -1171,7 +1190,7 @@ weren't, it's bound to be a lot slower than Perlmacs.
 What to do?  Produce tied hashes whose keys can be any Lisp object?
 Wrap hashes that contain non-string keys?
 
-=item * Conversion of cons type to Perl is in doubt.
+=item * Conversion of cons type is in doubt.
 
 Should cons be converted to an opaque Emacs::Lisp::Object or a
 translucent special Emacs::Lisp::Cons type?  What about lambda
@@ -1231,20 +1250,16 @@ in principle by reimplementing Emacs' internals.)
 
 =over 4
 
-=item * Provide XSubs for common, non-evalling functions.
+=item * Multibyte characters
 
-There is substantial overhead in calling an arbitrary Lisp function,
-because care must be taken to restore the Perl interpreter's state
-when Lisp performs a non-local jump out of the function call.  This
-can be avoided in the case of functions like cons, null, bufferp, car,
-eq, symbol-value, etc., for which a simple check can determine whether
-a jump will occur.
+Emacs has had them for some time.  Now Perl's UTF-8 support is
+stabilizing.  It's time the two met.
 
 =item * Special forms: let, defmacro, defvar.
 
 =item * Make a way to get a tied filehandle that reads a buffer.
 
-=item * Improve perl-eval-buffer, perl-load-file, et al.
+=item * Improve perl-eval-buffer, perl-eval-and-call, et al.
 
 =back
 

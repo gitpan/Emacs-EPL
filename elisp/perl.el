@@ -19,52 +19,25 @@
 
 (require 'perl-core)
 
-(defvar perl-interpreter-args nil
-  "Default command line arguments for initializing a Perl interpreter.
-This should be a list of strings, not including the program invocation
-name or script name.  A \"-e\" script will be appended to the list to
-ensure that the interpreter does not attempt to read its script from
-the standard input.
-
-See `make-perl-interpreter'.")
+(defvar perl-interpreter-args '("-MEmacs" "-MEmacs::Lisp"))
 
 ;; This gets called from C the first time a Perl function is called.
-(defun make-perl-interpreter (&rest cmdline)
+(defun make-perl-interpreter ()
   "Create and return a new Perl interpreter object.
-If arguments are given, they will be parsed as the interpreter's command
-line, with the first argument used as the invocation name.  Otherwise, if
-`perl-interpreter-args' is non-nil, the command line will be the pmacs
-invocation name, followed by the list values in `perl-interpreter-args',
-followed by \"-e0\".  Otherwise, the argument list defaults to
-'(\"-MEmacs\" \"-MEmacs::Lisp\"), which causes the Emacs module to be loaded
-and the Lisp function namespace to be exported to Perl.
-
-It is important to include a script name or \"-e\" option when running
-interactively, because otherwise Perl tries to read its script from the
-standard input.  XXX It is a good idea to include \"-MEmacs\", as this makes
-some special Perl variables and functions behave in a manner appropriate
-for the Emacs environment."
-  (let ((interp
-	 (if (fboundp 'perl-interpreter-new)  ; EPL
-	     (apply 'perl-interpreter-new
-		    (or cmdline
-			(cons perl-interpreter-program
-			      (append (or perl-interpreter-args
-					  '("-MEmacs" "-MEmacs::Lisp"))
-				      '("-MEmacs::PlServer"
-					"-weEmacs::PlServer::loop")))))
-	   (apply 'primitive-make-perl  ; Perlmacs
-		  (or cmdline
-		      (cons (car command-line-args)  ; propagate argv[0]
-			    (append (or perl-interpreter-args
-					'("-MEmacs" "-MEmacs::Lisp"))
-				    '("-we0"))))))))
-    ;; Alas, this hook isn't called in batch mode.
-    ;; XXX It would be nice to keep a weak hash table of interpreters
-    ;; and destruct any remaining ones at the end.
-    (add-hook 'kill-emacs-hook
-	      `(lambda () (perl-destruct ,interp)))
-    interp))
+The command line will be the program invocation name, followed by the
+list of strings in `perl-interpreter-args', followed by some arguments
+for establishing communication with Emacs."
+  (if (fboundp 'perl-interpreter-new)  ; EPL
+      (perl-interpreter-new)
+    (let ((interp                      ; Perlmacs
+	   (apply 'primitive-make-perl
+		  (car command-line-args)  ; propagate argv[0]
+		  (append perl-interpreter-args
+			  '("-e0")))))
+      ;; Alas, this hook isn't called in batch mode.
+      (add-hook 'kill-emacs-hook
+		`(lambda () (perl-destruct ,interp)))
+      interp)))
 
 (defun perl-eval-expression (expression &optional prefix)
   "Evaluate EXPRESSION as Perl code and print its value in the minibuffer.
