@@ -12,7 +12,7 @@ use strict;
 use vars qw ( $VERSION @ISA $old_warner );
 
 
-$VERSION = '0.12';
+$VERSION = '1.0';
 
 sub import {
     my $callpkg = caller;
@@ -217,7 +217,7 @@ __END__
 
 =head1 NAME
 
-Emacs - redefine Perl's system primitives to work inside of Emacs
+Emacs - Redefine Perl's system primitives to work inside of Emacs
 
 =head1 SYNOPSIS
 

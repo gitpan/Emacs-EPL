@@ -34,5 +34,6 @@
 (setq epl-interp-map (make-hash-table :test 'eq))
 (puthash t epl-interp epl-interp-map)
 (add-hook 'kill-emacs-hook 'epl-kill-emacs-hook)
+(setq perl-interpreter epl-interp)
 
 (let ((standard-input t)) (epl-loop))

@@ -22,6 +22,7 @@
 (defvar perl-interpreter-args '("-MEmacs" "-MEmacs::Lisp"))
 
 ;; This gets called from C the first time a Perl function is called.
+;;;###autoload
 (defun make-perl-interpreter ()
   "Create and return a new Perl interpreter object.
 The command line will be the program invocation name, followed by the
@@ -39,6 +40,7 @@ for establishing communication with Emacs."
 		`(lambda () (perl-destruct ,interp)))
       interp)))
 
+;;;###autoload
 (defun perl-eval-expression (expression &optional prefix)
   "Evaluate EXPRESSION as Perl code and print its value in the minibuffer.
 With prefix arg, evaluate in list context."
@@ -48,16 +50,19 @@ With prefix arg, evaluate in list context."
 	    (perl-eval expression
 		       (if prefix 'list-context 'scalar-context)))))
 
+;;;###autoload
 (defun perl-eval-region (start end)
   "Execute the region as Perl code."
   (interactive "r")
   (perl-eval (buffer-substring start end)))
 
+;;;###autoload
 (defun perl-eval-buffer ()
   "Execute the current buffer as Perl code."
   (interactive)
   (perl-eval (buffer-string)))
 
+;;;###autoload
 (defun perl-load-file (filename)
   "Apply Perl's `require' operator to FILENAME."
   (interactive "FLoad Perl file: ")

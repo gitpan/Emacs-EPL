@@ -19,7 +19,7 @@ my (%special);
 
 require Exporter;
 
-$VERSION = '0.93';
+$VERSION = '1.0';
 if (! defined (&Emacs::Lisp::funcall)
     || ! defined (&Emacs::Lisp::Object::funcall))
 {

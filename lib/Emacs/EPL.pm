@@ -7,14 +7,17 @@ sub my_eval { return (eval (shift)); }
 
 require 5.000;  # well, it's a goal anyway.
 
-$VERSION = '0.003';
+$VERSION = '0.004';
 sub version_check {
+    local $^W = 0;
     if ($_[0] != $VERSION) {
 	die ("Version mismatch: epl.el $_[0] vs. Emacs::EPL $VERSION");
     }
 }
 
 use strict;
+
+use vars ('$emacs');
 
 BEGIN {
     # Set inlinable constants based on feature tests.
@@ -66,11 +69,11 @@ sub print_stuff {
 
     if (tied ($_[1]) || ref ($_[1])) {
 	print( "(epl-cb-$callback (let ((x `");
-	local $$Emacs::current {'pos'} = "x";
-	local $$Emacs::current {'fixup'} = '';
-	local $$Emacs::current {'seen'};
+	local $$emacs {'pos'} = "x";
+	local $$emacs {'fixup'} = '';
+	local $$emacs {'seen'};
 	print_recursive ($_[1]);
-	print( "))$$Emacs::current{'fixup'} x))");
+	print( "))$$emacs{'fixup'} x))");
     }
     else {
 	# Optimize obviously non-circular cases.  (for visual aesthetics)
@@ -113,15 +116,15 @@ sub print_recursive {
 	my ($id, $pos);
 
 	$id = get_ref_id ($$ref);
-	$pos = $Emacs::current->{'seen'}->{$id};
+	$pos = $emacs->{'seen'}->{$id};
 	if (defined ($pos)) {
-	    $Emacs::current->{'fixup'}
-		.= fixup ($Emacs::current->{'pos'}, $pos);
+	    $emacs->{'fixup'}
+		.= fixup ($emacs->{'pos'}, $pos);
 	    print( "nil");
 	}
 	else {
-	    $Emacs::current->{'seen'}->{$id} = $Emacs::current->{'pos'};
-	    # This is like C<$$ref->epl_print_as_lisp($Emacs::current)>
+	    $emacs->{'seen'}->{$id} = $emacs->{'pos'};
+	    # This is like C<$$ref->epl_print_as_lisp($emacs)>
 	    # but accepts unblessed $$ref.
 	    & { ref ($$ref) ->can ('epl_print_as_lisp') } ($$ref);
 	}
@@ -137,7 +140,7 @@ sub print_recursive {
 	    print( $value);
 	}
 	else {  # string
-	    if ($$Emacs::current {'pid'}) {
+	    if ($$emacs {'pid'}) {
 		# XXX Make newlines \n because Emacs in -batch mode
 		# can't handle newlines.
 		if ($$ref =~ m/[\\\"\n]/) {
@@ -176,7 +179,7 @@ sub print_blessed_ref {
     $package =~ s/\\/\\\\/g;
     $package =~ s/\"/\\\"/g;
     print( "(perl-blessed \"$package\" . ");
-    local $Emacs::current->{'pos'} = "(cdr (cdr $$Emacs::current{'pos'}))";
+    local $emacs->{'pos'} = "(cdr (cdr $$emacs{'pos'}))";
     &$meth;
     print( ")");
 }
@@ -199,10 +202,10 @@ sub UNIVERSAL::epl_print_as_lisp {
 
 sub Emacs::Lisp::Object::epl_print_as_lisp {
     my ($value) = @_;
-    my ($emacs, $handle) = @$value;
+    my ($e, $handle) = @$value;
 
-    if ($$emacs {'id'} == $$Emacs::current {'id'}) {
-	delete ($Emacs::current->{'seen'}->{ &get_ref_id });
+    if ($$e {'id'} == $$emacs {'id'}) {
+	delete ($emacs->{'seen'}->{ &get_ref_id });
 	print( ",(epl-cb-handle-to-object $handle)");
     }
     else {
@@ -220,11 +223,11 @@ sub REF::epl_print_as_lisp {
     $class = ref ($value);
     if ($class eq 'ARRAY') {
 	# ref-to-ref-to-array is a Lisp vector.
-	my $opos = $Emacs::current->{'pos'};
-	local ($Emacs::current->{'pos'});
+	my $opos = $emacs->{'pos'};
+	local ($emacs->{'pos'});
 	print( "[");
 	for (my $i = 0; $i <= $#$value; $i++) {
-	    $Emacs::current->{'pos'} = "(aref $opos $i)";
+	    $emacs->{'pos'} = "(aref $opos $i)";
 	    print( " ") if $i > 0;
 	    print_recursive ($$value [$i]);
 	}
@@ -232,8 +235,8 @@ sub REF::epl_print_as_lisp {
     }
     else {
 	print( ",(epl-cb-ref-new `");
-	local $Emacs::current->{'pos'}
-	    = "(perl-ref-value $$Emacs::current{'pos'})";
+	local $emacs->{'pos'}
+	    = "(perl-ref-value $$emacs{'pos'})";
 	print_recursive ($value);
 	print( ")");
     }
@@ -243,11 +246,11 @@ sub ARRAY::epl_print_as_lisp {
     my ($value) = @_;
     my ($opos);
 
-    $opos = $Emacs::current->{'pos'};
-    local ($Emacs::current->{'pos'});
+    $opos = $emacs->{'pos'};
+    local ($emacs->{'pos'});
     print( "(");
     for (my $i = 0; $i <= $#$value; $i++) {
-	$Emacs::current->{'pos'} = "(nth $i $opos)";
+	$emacs->{'pos'} = "(nth $i $opos)";
 	print( " ") if $i > 0;
 	print_recursive ($$value [$i]);
     }
@@ -258,8 +261,8 @@ sub HASH::epl_print_as_lisp {
     my ($value) = @_;
     my ($opos);
 
-    $opos = $Emacs::current->{'pos'};
-    local ($Emacs::current->{'pos'});
+    $opos = $emacs->{'pos'};
+    local ($emacs->{'pos'});
     # Elisp lacks a read syntax for hash tables.
     print( ",(epl-cb-make-hash-table");
     while (my ($k, $v) = each (%$value)) {
@@ -274,7 +277,7 @@ sub HASH::epl_print_as_lisp {
 	    $k = qq("$k");
 	}
 	print( " $k `");
-	$Emacs::current->{'pos'} = "(gethash $k $opos)";
+	$emacs->{'pos'} = "(gethash $k $opos)";
 	print_recursive ($v);
     }
     print( ")");
@@ -291,7 +294,7 @@ sub GLOB::epl_print_as_lisp {
 	    $name =~ s/\"/\\\"/g;
 	    print( qq((perl-globref "$pkg\::$name")));
 	}
-	delete ($Emacs::current->{'seen'}->{ &get_ref_id });
+	delete ($emacs->{'seen'}->{ &get_ref_id });
     }
     else {
 	&print_opaque;
@@ -336,13 +339,13 @@ sub Emacs::Lisp::Cons::epl_print_as_lisp {
     my ($value) = @_;
     my ($opos);
 
-    $opos = $Emacs::current->{'pos'};
-    local ($Emacs::current->{'pos'});
+    $opos = $emacs->{'pos'};
+    local ($emacs->{'pos'});
     print( "(");
-    $Emacs::current->{'pos'} = "(car $opos)";
+    $emacs->{'pos'} = "(car $opos)";
     print_recursive ($$value [0]);
     print( " . ");
-    $Emacs::current->{'pos'} = "(cdr $opos)";
+    $emacs->{'pos'} = "(cdr $opos)";
     print_recursive ($$value [1]);
     print( ")");
 }
@@ -352,7 +355,7 @@ sub Emacs::Lisp::Opaque::epl_print_as_lisp {
 }
 
 sub print_opaque {
-    delete ($Emacs::current->{'seen'}->{ &get_ref_id });
+    delete ($emacs->{'seen'}->{ &get_ref_id });
     print( ",(epl-cb-handle-to-perl-value ", &cb_ref_to_handle, ")");
 }
 
@@ -395,7 +398,7 @@ $next_handle = 1;
 $id_to_handle = {};
 
 # Subs whose names begin in "cb_" may be called by evalled messages.
-# They assume that $Emacs::current is valid.
+# They assume that $emacs is valid.
 
 sub cb_ref_to_handle {
     my ($id, $handle);
@@ -422,7 +425,7 @@ sub cb_handle_to_ref {
 
 sub cb_object {
     my ($handle) = @_;
-    return (bless ([ $Emacs::current, $handle ], 'Emacs::Lisp::Object'));
+    return (bless ([ $emacs, $handle ], 'Emacs::Lisp::Object'));
 }
 
 sub cb_cons {
@@ -457,13 +460,13 @@ sub cb_free_refs {
 }
 
 sub cb_return {
-    ($$Emacs::current {'retval'}) = @_;
+    ($$emacs {'retval'}) = @_;
     die ("EPL return\n");
 }
 
 sub cb_die {
     my $msg = shift;
-    $$Emacs::current {'err'} = shift;
+    $$emacs {'err'} = shift;
     die ("Lisp error: $msg");
 }
 
@@ -477,21 +480,21 @@ sub cb_throw {
 }
 
 sub cb_exit {
-    $$Emacs::current {'exiting'} = 1;
+    $$emacs {'exiting'} = 1;
     exit;
 }
 
 sub send_message {
     my ($ofh, $err);
 
-    $ofh = select ($$Emacs::current {'out'});
+    $ofh = select ($$emacs {'out'});
     {
 	local ($@);
 	eval {
 	    local $\ = "";
 	    local $, = "";
 	    &print_stuff;
-	    if ($$Emacs::current {'pid'}) {
+	    if ($$emacs {'pid'}) {
 		print( "\n");
 	    }
 	    else {
@@ -522,7 +525,7 @@ sub Emacs::start {
     local (*READ, *WRITE);
     my ($prog, $pid);
 
-    # Don't ask, because I don't know.
+    # Don't ask why, because I don't know.
     *IPC::Open3::croak = \&Carp::croak;
     sub Symbol::qualify ($;$);
     *IPC::Open3::qualify = \&Symbol::qualify;
@@ -538,7 +541,16 @@ sub Emacs::start {
     if (not (defined ($prog))) {
 	$prog = 'emacs';
     }
+
+    # XXX We should really implement our own open2 to make sure nothing
+    # funny happens with %ENV or %SIG.  This would further eliminate the
+    # restriction on module ordering, because we would use our duped
+    # STDIN and STDOUT instead of the possibly tied versions.
+
     $pid = IPC::Open2::open2 ("READ", "WRITE", $prog, "-batch", @Emacs::args,
+			      # XXX Build a -L path from $Config{...}.
+			      # For XEmacs, set EMACSLOADPATH.
+			      "-L", "lisp",  # XXX for the testsuite.
 			      "-l", "epl-server") || die $!;
     return Emacs->new (
 		       'in' => *READ,
@@ -549,25 +561,25 @@ sub Emacs::start {
 }
 
 sub Emacs::stop {
-    my ($emacs) = @_;
+    my ($e) = @_;
 
-    if (! (ref ($emacs))) {
-	$emacs = $Emacs::current || return;
+    if (! (ref ($e))) {
+	$e = $Emacs::current || return;
     }
-    if ($$emacs {'pid'}) {
-	local $Emacs::current = $emacs;
+    if ($$e {'pid'}) {
+	local $emacs = $e;
 	send_message ('exit');
-	waitpid ($$emacs {'pid'}, 0);
-	delete ($$emacs {'pid'});
+	waitpid ($$e {'pid'}, 0);
+	delete ($$e {'pid'});
     }
-    delete ($Emacs::id_to_emacs {$$emacs {'id'}});
+    delete ($Emacs::id_to_emacs {$$e {'id'}});
 }
 
 sub Emacs::DESTROY {
-    my ($emacs) = @_;
+    my ($e) = @_;
     local ($@);
-    eval { $emacs->stop; };
-    eval { delete ($Emacs::id_to_emacs {$$emacs {'id'}}); };
+    eval { $e->stop; };
+    eval { delete ($Emacs::id_to_emacs {$$e {'id'}}); };
 }
 
 END {
@@ -600,43 +612,48 @@ sub import {
 	}
     }
     if ($server) {
-	open (OUT, ">&=" . fileno (STDOUT))
-	    || die ("Can't fdopen stdout: $!");
-	open (IN, "<&=" . fileno (STDIN))
-	    || die ("Can't fdopen stdin: $!");
-	close (STDERR);  # XXX
-#	open (ERR, ">/home/jtobey/Emacs/log");  # XXX
-#	select ((select (ERR), $| = 1)[0]);
+	local ($@);
+	eval { server_init (); };
+	if ($@) {
+	    # Some kind of error happened.  Let `perl-interpreter-new' know
+	    # so that it can clean up.
+	    send_message ('return', $@);
+	    exit (1);
+	}
     }
+}
+
+# This must happen before Emacs.pm gets its grubby paws on STDIN et al.
+sub server_init {
+    open (OUT, ">&=" . fileno (STDOUT))
+	|| die ("Can't fdopen stdout: $!");
+    open (IN, "<&=" . fileno (STDIN))
+	|| die ("Can't fdopen stdin: $!");
+    # Emacs commingles stderr with stdout.  Bad.
+    close (STDERR);
+
+    $emacs = Emacs->new (
+			 'in' => *IN,
+			 'out' => *OUT,
+			 'frame' => 'lisp',
+			);
+    $Emacs::current = $emacs;
+
+    # Let `perl-interpreter-new' know startup succeeded.
+    send_message ('return', undef);
 }
 
 # Called by epl.el (perl-interpreter-new).
 # Talk with Emacs via this process's standard input and output.
 # Use aliases so that the Perl variables STDIN and STDOUT may be tied.
 sub loop {
-    my (%args) = @ARGV;
-
-    $Emacs::current = Emacs->new (
-				  'in' => *IN,
-				  'out' => *OUT,
-				  'frame' => 'lisp',
-				 );
-    loop_1 ();
-}
-
-sub loop_1 {
-
-    # Here we ought to run a select loop.
-    # For now, just use $Emacs::current.
-    die unless $Emacs::current;
-
-    my $in = $$Emacs::current {'in'};
+    my $in = $$emacs {'in'};
 
     while (1) {
 	my ($input, $output, $len, $caught, $ofh);
 
-	local ($$Emacs::current {'retval'});
-	local ($$Emacs::current {'err'});
+	local ($$emacs {'retval'});
+	local ($$emacs {'err'});
 
 	$len = readline ($in);
 	$len =~ s/^(?:Lisp expression: )+//;
@@ -656,14 +673,14 @@ sub loop_1 {
 	    if ($caught eq "EPL throw\n") {
 		die ("EPL skip\n");
 	    }
-	    if ($$Emacs::current {'frame'} eq 'perl') {
+	    if ($$emacs {'frame'} eq 'perl') {
 		if ($caught eq "EPL return\n") {
-		    return ($$Emacs::current {'retval'});
+		    return ($$emacs {'retval'});
 		}
 		die ($caught);
 	    }
-	    if (defined ($$Emacs::current {'err'})) {
-		send_message ('propagate', $$Emacs::current {'err'});
+	    if (defined ($$emacs {'err'})) {
+		send_message ('propagate', $$emacs {'err'});
 	    }
 	    else {
 		send_message ('error', $caught);
@@ -675,52 +692,58 @@ sub loop_1 {
 }
 
 sub Emacs::Lisp::funcall {
-    $Emacs::current ||= Emacs->start;
-    local $Emacs::current = $Emacs::current;
-    local $$Emacs::current {'frame'} = 'perl';
+    local $emacs = $Emacs::current ||= Emacs->start;
+    local $$emacs {'frame'} = 'perl';
     # XXX Check wantarray to avoid extra refs/conversions in scalar/void.
     send_message ('funcall', \@_);
-    return loop_1 ();
+    return loop ();
 }
 
 sub Emacs::Lisp::Object::funcall {
-    my ($emacs);
-    if (UNIVERSAL::isa ($_[0], 'Emacs::Lisp::Object')) {
-	$emacs = $_[0]->[0];
-    }
-    else {
-	$emacs = $Emacs::current || Emacs->start;
-    }
-    local $Emacs::current = $emacs;
-    local $$Emacs::current {'frame'} = 'perl';
+    #my ($e);
+    # Use the first argument's emacs if it has one, e.g. in $x->car.
+    # Of course, this means &cons($x,$y) uses $x's emacs even if $y's
+    # is $Emacs::current.  Hmmm.
+    #if (defined ($_[1]) && UNIVERSAL::isa ($_[1], 'Emacs::Lisp::Object')) {
+	#$e = $_[1]->[0];
+    #}
+    #else {
+	#$e = $Emacs::current ||= Emacs->start;
+    #}
+    #local $emacs = $e;
+    local $emacs = $Emacs::current ||= Emacs->start;
+    local $$emacs {'frame'} = 'perl';
     # XXX Check wantarray to avoid extra refs/conversions in scalar/void.
     send_message ('funcall-raw', \@_);
-    return loop_1 ();
+    return loop ();
 }
 
 sub Emacs::Lisp::Object::DESTROY {
-    my ($emacs, $handle) = @ { $_[0] };
-    return if $$emacs {'exiting'};
+    my ($e, $handle) = @ { $_[0] };
+    return if $$e {'exiting'};
     local ($@);
+    local $emacs = $e;
     eval {  # Ignore errors.
-	local $Emacs::current = $emacs;
 	send_message ('unref-objects', $handle);
     };
 }
 
 sub Emacs::Lisp::Object::to_perl {
-    my ($emacs, $handle) = @ { $_[0] };
-    local $Emacs::current = $emacs;
-    local $$Emacs::current {'frame'} = 'perl';
+    if (! UNIVERSAL::isa ($_[0], 'Emacs::Lisp::Object')) {
+	Carp::croak ("Argument to to_perl is not an Emacs Lisp object");
+    }
+    local $emacs = $_[0]->[0];
+    local $$emacs {'frame'} = 'perl';
     send_message ('unwrap', $_[0]);
-    return loop_1 ();
+    return loop ();
 }
 
 sub Emacs::Lisp::lisp {
     $Emacs::current ||= Emacs->start;
-    local $$Emacs::current {'frame'} = 'perl';
+    local $emacs = $Emacs::current;
+    local $$emacs {'frame'} = 'perl';
     send_message ('wrap', $_[0]);
-    return loop_1 ();
+    return loop ();
 }
 
 1;
@@ -729,7 +752,7 @@ __END__
 
 =head1 NAME
 
-Emacs::EPL - Protocol implementation and data conversions for EPL
+Emacs::EPL - Protocol implementation and data conversions for Emacs Perl
 
 =head1 SYNOPSIS
 

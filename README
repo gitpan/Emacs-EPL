@@ -1,6 +1,6 @@
-29 January 2001
+31 January 2001
 
-This is EPL version 0.3.  EPL (Emacs Perl) is a replacement for
+This is EPL version 0.4.  EPL (Emacs Perl) is a replacement for
 Perlmacs that uses pipes instead of embedding.  This allows it to work
 with different Emacs, XEmacs, and Perl versions without
 recompilation.  See http://john-edwin-tobey.org/perlmacs/ for news and
@@ -19,14 +19,28 @@ leak.  Under GNU Emacs 21, this restriction will not exist.
 
 INSTALLATION
 
+If you have XEmacs 21 or newer, you can install EPL as an XEmacs
+package.  Simply create a ~/.xemacs/packages directory and unzip the
+most recent epl-N.NN-pkg.tar.gz file there.  To view the Perl module
+documentation, try:
+
+    perldoc -F ~/.xemacs/packages/etc/perllib/Emacs/Lisp.pm
+    perldoc -F ~/.xemacs/packages/etc/perllib/Emacs.pm
+
+The examples should work without further ado.
+
+If you do not have XEmacs or want to install the Perl modules in
+standard locations, unzip the highest-numbered Emacs-EPL-N.N.tar.gz,
+change directory to Emacs-EPL-N.N, and run these commands:
+
     perl Makefile.PL
     make
     make install
 
-Copy the Lisp files from the elisp directory to where Emacs looks for
-libraries.  Load perl.el in Emacs with `M-x load-file' or the
-equivalent.  Refer to the Emacs manual for details about loading
-libraries.
+Then copy the Lisp files from the elisp directory to where Emacs looks
+for libraries.  Byte-compile them if you like.  Load perl.el in Emacs
+with `M-x load-file' or the equivalent.  Refer to the Emacs manual for
+details about loading libraries and byte-compilation.
 
 See the Emacs::Lisp documentation for further information.
 
